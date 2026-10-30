@@ -1,0 +1,1097 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manual del kernel Xinu · ESP32-S3</title>
+<style>
+:root{--bg:#0a0f1d;--card:#131d33;--line:#26344f;--txt:#e8eef7;--muted:#a9b8cf;
+--dim:#7c8ca6;--acc:#6ea8fe;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);
+font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+main{max-width:58rem;margin:0 auto;padding:2rem 1.2rem 5rem}
+a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
+h1{font-size:2rem;line-height:1.2;margin:.2rem 0 .4rem;letter-spacing:-.02em}
+h2{font-size:1.35rem;margin:2.4rem 0 .6rem;padding-top:.6rem;border-top:1px solid var(--line)}
+h3{font-size:1.08rem;margin:1.7rem 0 .4rem;color:#dbe7fa}
+h4{font-size:.98rem;margin:1.2rem 0 .3rem}
+p{margin:.65rem 0;color:#d5e0f0}
+code{font-family:var(--mono);background:#0b1322;border:1px solid #1f2c45;border-radius:4px;
+padding:.08em .35em;font-size:.88em}
+pre{background:#080d18;border:1px solid var(--line);border-radius:10px;padding:1rem;overflow:auto;
+font-size:.84rem;line-height:1.55}
+pre code{background:none;border:0;padding:0;font-size:inherit}
+table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.9rem}
+th,td{text-align:left;padding:.5rem .6rem;border-bottom:1px solid #1e2b44;vertical-align:top}
+th{color:var(--dim);font-size:.78rem;text-transform:uppercase;letter-spacing:.06em}
+blockquote{margin:1rem 0;padding:.7rem 1rem;border-left:3px solid var(--acc);background:#0f1a2e;
+border-radius:0 8px 8px 0;color:var(--muted)}
+hr{border:0;border-top:1px solid var(--line);margin:2rem 0}
+ul,ol{padding-left:1.4rem}li{margin:.25rem 0;color:#d5e0f0}
+.back{display:inline-block;margin-bottom:1rem;font-size:.9rem;color:var(--muted);
+border:1px solid var(--line);border-radius:8px;padding:.4rem .7rem}
+.back:hover{color:var(--txt);border-color:var(--acc)}
+.toc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1rem 1.2rem;margin:1.6rem 0}
+.toc h2{border:0;margin:.1rem 0 .5rem;padding:0;font-size:1rem}
+.toc ul{list-style:none;padding:0;margin:0;columns:2;column-gap:2rem}
+.toc li{margin:.15rem 0;font-size:.9rem}
+.toc .l3{padding-left:1rem;color:var(--dim)}
+@media(max-width:720px){.toc ul{columns:1}}
+</style>
+</head>
+<body>
+<main>
+<a class="back" href="index.html">← Volver al dashboard</a>
+<h1 id="manual-del-kernel-xinu-esp32-s3">Manual del kernel Xinu — ESP32-S3</h1>
+<h3 id="concurrencia-c-y-cómo-modificar-el-kernel">Concurrencia, C y cómo modificar el kernel</h3>
+<p>Este manual está escrito contra <strong>este árbol</strong> (<code>/home/daniel/s3-xinu</code>), no contra el Xinu genérico. Todos los nombres de funciones, constantes y ficheros existen aquí. La idea es que puedas leerlo, ejecutar los ejemplos y perder el miedo a tocar <code>system/</code>, <code>network/</code> y <code>device/</code>.</p>
+<blockquote><strong>Cómo usarlo.</strong> Lee las partes 1 a 6 en orden. Haz los ejercicios de la parte 9 con el manual al lado. La parte 8 es la guía de trabajo para cuando quieras añadir algo al kernel.</blockquote>
+<hr>
+<nav class="toc"><h2>Índice</h2><ul><li class="l3"><a href="#concurrencia-c-y-cómo-modificar-el-kernel">Concurrencia, C y cómo modificar el kernel</a></li><li class="l2"><a href="#0-el-mapa-del-árbol-y-el-arranque">0. El mapa del árbol y el arranque</a></li><li class="l3"><a href="#01-directorios">0.1 Directorios</a></li><li class="l3"><a href="#02-arranque">0.2 Arranque</a></li><li class="l3"><a href="#03-compilar-y-flashear">0.3 Compilar y flashear</a></li><li class="l2"><a href="#1-refresco-de-c-con-este-kernel">1. Refresco de C con este kernel</a></li><li class="l3"><a href="#11-tipos-del-kernel">1.1 Tipos del kernel</a></li><li class="l3"><a href="#12-punteros-el-paquete-de-red">1.2 Punteros: el paquete de red</a></li><li class="l3"><a href="#13-structs-y-tablas">1.3 Structs y tablas</a></li><li class="l3"><a href="#14-arrays-y-cadenas">1.4 Arrays y cadenas</a></li><li class="l3"><a href="#15-funciones-static-y-prototipos">1.5 Funciones, static y prototipos</a></li><li class="l3"><a href="#16-punteros-a-función-devtab-y-commandtab">1.6 Punteros a función: devtab y commandtab</a></li><li class="l3"><a href="#17-variádicas-create">1.7 Variádicas: create()</a></li><li class="l3"><a href="#18-macros">1.8 Macros</a></li><li class="l3"><a href="#19-volatile-y-registros-de-hardware">1.9 volatile y registros de hardware</a></li><li class="l3"><a href="#110-disable-restore">1.10 disable() / restore()</a></li><li class="l3"><a href="#111-memoria">1.11 Memoria</a></li><li class="l3"><a href="#112-errores-de-c-que-más-duelen-aquí">1.12 Errores de C que más duelen aquí</a></li><li class="l2"><a href="#2-semáforos">2. Semáforos</a></li><li class="l3"><a href="#21-qué-hay-dentro">2.1 Qué hay dentro</a></li><li class="l3"><a href="#22-api">2.2 API</a></li><li class="l3"><a href="#23-los-tres-usos">2.3 Los tres usos</a></li><li class="l3"><a href="#24-traza-de-contadores">2.4 Traza de contadores</a></li><li class="l3"><a href="#25-el-error-clásico-con-semáforos">2.5 El error clásico con semáforos</a></li><li class="l3"><a href="#26-trampas">2.6 Trampas</a></li><li class="l2"><a href="#3-monitores">3. Monitores</a></li><li class="l3"><a href="#31-qué-añade-sobre-un-semáforo">3.1 Qué añade sobre un semáforo</a></li><li class="l3"><a href="#32-cómo-funciona">3.2 Cómo funciona</a></li><li class="l3"><a href="#33-semáforo1-vs-monitor-las-diferencias-que-importan">3.3 Semáforo(1) vs monitor: las diferencias que importan</a></li><li class="l3"><a href="#34-ejemplo-real-el-bus-spi">3.4 Ejemplo real: el bus SPI</a></li><li class="l3"><a href="#35-reglas-de-oro-con-monitores">3.5 Reglas de oro con monitores</a></li><li class="l2"><a href="#4-mailboxes">4. Mailboxes</a></li><li class="l3"><a href="#41-qué-hay-dentro">4.1 Qué hay dentro</a></li><li class="l3"><a href="#42-api">4.2 API</a></li><li class="l3"><a href="#43-ejemplo-real-arp-e-icmp">4.3 Ejemplo real: ARP e ICMP</a></li><li class="l3"><a href="#44-cómo-sabe-un-proceso-que-el-mensaje-es-para-él">4.4 “¿Cómo sabe un proceso que el mensaje es para él?”</a></li><li class="l3"><a href="#45-trampas">4.5 Trampas</a></li><li class="l2"><a href="#5-mensajes-de-hilo-sendreceive">5. Mensajes de hilo (send/receive)</a></li><li class="l3"><a href="#51-qué-es">5.1 Qué es</a></li><li class="l3"><a href="#52-ejemplo-ping">5.2 Ejemplo: ping</a></li><li class="l3"><a href="#53-cuándo-usarlo">5.3 Cuándo usarlo</a></li><li class="l2"><a href="#6-cómo-elegir-y-no-liarse">6. Cómo elegir (y no liarse)</a></li><li class="l3"><a href="#61-tabla">6.1 Tabla</a></li><li class="l3"><a href="#62-árbol-de-decisión">6.2 Árbol de decisión</a></li><li class="l3"><a href="#63-semáforo-vs-monitor-en-una-frase">6.3 Semáforo vs monitor, en una frase</a></li><li class="l3"><a href="#64-patrones-útiles">6.4 Patrones útiles</a></li><li class="l2"><a href="#7-estudio-de-caso-un-ping-completo">7. Estudio de caso: un ping completo</a></li><li class="l3"><a href="#71-capas">7.1 Capas</a></li><li class="l3"><a href="#72-el-host-hace-ping-a-la-placa">7.2 El host hace ping a la placa</a></li><li class="l3"><a href="#73-la-placa-hace-ping-al-host">7.3 La placa hace ping al host</a></li><li class="l3"><a href="#74-quién-usa-qué">7.4 Quién usa qué</a></li><li class="l2"><a href="#8-cómo-modificar-el-kernel">8. Cómo modificar el kernel</a></li><li class="l3"><a href="#81-añadir-un-fichero-c">8.1 Añadir un fichero .c</a></li><li class="l3"><a href="#82-añadir-un-comando-al-shell">8.2 Añadir un comando al shell</a></li><li class="l3"><a href="#83-añadir-un-dispositivo">8.3 Añadir un dispositivo</a></li><li class="l3"><a href="#84-añadir-un-hilo-al-arranque">8.4 Añadir un hilo al arranque</a></li><li class="l3"><a href="#85-cambiar-la-configuración">8.5 Cambiar la configuración</a></li><li class="l3"><a href="#86-depurar">8.6 Depurar</a></li><li class="l3"><a href="#87-errores-típicos-de-compilación">8.7 Errores típicos de compilación</a></li><li class="l2"><a href="#9-ejercicios-guiados">9. Ejercicios guiados</a></li><li class="l3"><a href="#ejercicio-1-semdemo-semáforo-como-llave">Ejercicio 1 — semdemo: semáforo como llave</a></li><li class="l3"><a href="#ejercicio-2-mondemo-monitor-sobre-la-consola">Ejercicio 2 — mondemo: monitor sobre la consola</a></li><li class="l3"><a href="#ejercicio-3-mbdemo-productorconsumidor">Ejercicio 3 — mbdemo: productor/consumidor</a></li><li class="l3"><a href="#ejercicio-4-pingtrace-instrumentar-la-pila">Ejercicio 4 — pingtrace: instrumentar la pila</a></li><li class="l3"><a href="#ejercicio-5-http-con-acceptor-y-mailbox">Ejercicio 5 — HTTP con acceptor y mailbox</a></li><li class="l2"><a href="#10-caso-real-terminal-web">10. Caso real: terminal web</a></li><li class="l3"><a href="#101-el-problema">10.1 El problema</a></li><li class="l3"><a href="#102-arquitectura">10.2 Arquitectura</a></li><li class="l3"><a href="#1021-endpoints-y-tareas">10.2.1 Endpoints y tareas</a></li><li class="l3"><a href="#103-estado-del-trabajo-monitor-semáforo">10.3 Estado del trabajo: monitor + semáforo</a></li><li class="l3"><a href="#104-capturar-la-salida-sin-tocar-la-consola">10.4 Capturar la salida sin tocar la consola</a></li><li class="l3"><a href="#105-el-directorio-de-trabajo">10.5 El directorio de trabajo</a></li><li class="l3"><a href="#106-el-preconnect-del-navegador-y-tcp_ctrl_rcvtimeo">10.6 El preconnect del navegador y TCP_CTRL_RCVTIMEO</a></li><li class="l3"><a href="#107-la-api-http">10.7 La API HTTP</a></li><li class="l3"><a href="#108-límites-actuales">10.8 Límites actuales</a></li><li class="l3"><a href="#109-ejercicios-sobre-este-caso">10.9 Ejercicios sobre este caso</a></li><li class="l3"><a href="#1010-pruebas-realizadas">10.10 Pruebas realizadas</a></li><li class="l2"><a href="#apéndice-a-api-de-bolsillo">Apéndice A. API de bolsillo</a></li><li class="l3"><a href="#semáforos">Semáforos</a></li><li class="l3"><a href="#monitores">Monitores</a></li><li class="l3"><a href="#mailboxes">Mailboxes</a></li><li class="l3"><a href="#mensajes-de-hilo">Mensajes de hilo</a></li><li class="l3"><a href="#hilos">Hilos</a></li><li class="l3"><a href="#memoria">Memoria</a></li><li class="l2"><a href="#apéndice-b-constantes">Apéndice B. Constantes</a></li><li class="l2"><a href="#apéndice-c-glosario">Apéndice C. Glosario</a></li></ul></nav>
+<h2 id="0-el-mapa-del-árbol-y-el-arranque">0. El mapa del árbol y el arranque</h2>
+<h3 id="01-directorios">0.1 Directorios</h3>
+<table>
+<thead><tr><th>Directorio</th><th>Qué hay</th></tr></thead>
+<tbody>
+<tr><td><code>loader/platforms/esp32s3/</code></td><td><code>start.S</code>, vectores, arranque en <code>0x0</code></td></tr>
+<tr><td><code>system/</code></td><td>Núcleo: hilos, semáforos, monitores, memoria, reloj, <code>boot.c</code></td></tr>
+<tr><td><code>system/arch/xtensa/</code></td><td><code>ctxsw.S</code>, manejo de interrupciones de Xtensa</td></tr>
+<tr><td><code>system/platforms/esp32s3/</code></td><td>Reloj, UART de bajo nivel, plataforma</td></tr>
+<tr><td><code>device/</code></td><td>Drivers: <code>uart-esp32s3</code>, <code>tty</code>, <code>w5500</code>, <code>sd</code>, <code>tft</code>, <code>button</code>, <code>jvm</code>, <code>telnet</code></td></tr>
+<tr><td><code>network/</code></td><td><code>net</code>, <code>ipv4</code>, <code>arp</code>, <code>icmp</code>, <code>tcp</code>, <code>udp</code>, <code>route</code>, <code>dhcp</code></td></tr>
+<tr><td><code>mailbox/</code></td><td>Implementación de mailboxes</td></tr>
+<tr><td><code>fs/</code></td><td>FAT sobre SD</td></tr>
+<tr><td><code>shell/</code></td><td>Comandos <code>xsh_*.c</code> y la tabla <code>commandtab[]</code></td></tr>
+<tr><td><code>jvm/</code></td><td>Simple JVM (portable)</td></tr>
+<tr><td><code>include/</code></td><td>Cabeceras del kernel</td></tr>
+<tr><td><code>compile/</code></td><td>Makefile, <code>platforms/esp32s3/xinu.conf</code>, <code>ld.script</code></td></tr>
+<tr><td><code>apps/</code></td><td>Aplicaciones de usuario</td></tr>
+<tr><td><code>lib/</code></td><td><code>printf</code>, cadenas, <code>malloc</code>, etc. (sin libc del sistema)</td></tr>
+</tbody></table>
+<h3 id="02-arranque">0.2 Arranque</h3>
+<pre><code>ROM bootloader (carga la imagen en 0x0)
+   -&gt; start.S
+      -&gt; nulluser()                    system/initialize.c
+         -&gt; platforminit()             PSRAM, relojes, UART
+         -&gt; sysinit()
+            -&gt; tablas: thrtab, semtab, montab, memlist, PSRAM
+            -&gt; mailboxInit()
+            -&gt; devtab[i].init()        &lt;- w5500Init(), sdInit(), tftInit()...
+            -&gt; netInit()               &lt;- pool de buffers, arp/icmp/tcpTimer
+         -&gt; enable()                   interrupciones
+         -&gt; create(main)               system/main.c
+            -&gt; shell / servicios de arranque (bootsvc_tab[])</code></pre>
+<p>Dos detalles que importan:</p>
+<ul><li><code>w5500Init()</code> corre <strong>antes</strong> de <code>netInit()</code>. El chip queda listo, pero la</li></ul>
+<p>pila de red todavía no existe.</p>
+<ul><li><code>netup</code> es un <strong>servicio de arranque</strong> (<code>system/boot.c</code>) que ejecuta el</li></ul>
+<p>comando <code>netup</code> del shell. Ese comando hace DHCP y llama a <code>netUp(ETH0, ...)</code>, que es quien crea el hilo <code>ETH0recv00</code>.</p>
+<h3 id="03-compilar-y-flashear">0.3 Compilar y flashear</h3>
+<pre><code class="lang-sh">cd /home/daniel/s3-xinu
+find . -name &#x27;*.o&#x27; -delete
+rm -rf compile/.deps
+cd compile
+source ../env.sh
+make PLATFORM=esp32s3 -j4</code></pre>
+<p>Flashear (sin bootloader de ESP-IDF, la imagen va en <code>0x0</code>):</p>
+<pre><code class="lang-sh">esptool --chip esp32s3 --port /dev/ttyUSB0 --baud 460800 \
+  write-flash --flash-mode dio --flash-freq 80m --flash-size 8MB \
+  0x0 xinu.boot</code></pre>
+<hr>
+<h2 id="1-refresco-de-c-con-este-kernel">1. Refresco de C con este kernel</h2>
+<p>Este kernel se compila con <code>-nostdinc</code>, <code>-fno-builtin</code>, <code>-fno-strict-aliasing</code> y sin libc. Eso cambia varias costumbres respecto a un programa de Linux.</p>
+<h3 id="11-tipos-del-kernel">1.1 Tipos del kernel</h3>
+<p>En <code>include/stddef.h</code>:</p>
+<pre><code class="lang-c">typedef unsigned char  uchar;
+typedef unsigned short ushort;
+typedef unsigned int   uint;
+typedef unsigned long  ulong;
+typedef char           bool;
+typedef unsigned long  size_t;
+
+typedef int syscall;    /* valor de retorno de una llamada del kernel */
+typedef int devcall;    /* valor de retorno de un driver              */
+typedef int shellcmd;   /* valor de retorno de un comando de shell    */
+typedef int thread;     /* valor de retorno de un hilo                */
+typedef void interrupt; /* manejador de interrupción                  */
+typedef int message;    /* contenido de un mensaje                    */
+typedef int tid_typ;    /* identificador de hilo                      */</code></pre>
+<p>Constantes universales:</p>
+<pre><code class="lang-c">#define OK        1
+#define SYSERR   (-1)
+#define TIMEOUT  (-3)
+#define NULL      0
+#define TRUE      1
+#define FALSE     0</code></pre>
+<p><code>syscall</code> <strong>no es una instrucción de trap</strong>: es solo un <code>int</code>. <code>read()</code>, <code>write()</code> y compañía son funciones normales que despachan por <code>devtab[]</code>.</p>
+<p><code>NULL</code> está definido como <code>0</code>, no como <code>((void *)0)</code>. Por eso verás comparaciones como <code>NULL == pkt</code> con punteros y también con enteros. Funciona, pero no es C estándar fino.</p>
+<h3 id="12-punteros-el-paquete-de-red">1.2 Punteros: el paquete de red</h3>
+<p><code>struct packet</code> (<code>include/network.h</code>) es el ejemplo perfecto:</p>
+<pre><code class="lang-c">struct packet
+{
+    struct netif *nif;      /* interfaz por la que llegó        */
+    uint len;               /* longitud total                   */
+    uchar *linkhdr;         /* cabecera Ethernet                */
+    uchar *nethdr;          /* cabecera IP                      */
+    uchar *curr;            /* posición actual dentro del buffer*/
+    uchar pad[2];
+    uchar data[1];          /* datos; el buffer real es más grande */
+};</code></pre>
+<p><code>data[1]</code> es el truco clásico de <strong>struct con cola flexible</strong>: el buffer se reserva con <code>netGetbuf()</code> como <code>sizeof(struct packet) + NET_MAX_PKTLEN</code>, y se accede a <code>pkt-&gt;data[...]</code> más allá del último campo declarado.</p>
+<p>La pila de red mueve <code>curr</code> hacia delante y hacia atrás:</p>
+<pre><code class="lang-c">pkt-&gt;curr += ((ip-&gt;ver_ihl &amp; IPv4_IHL) &lt;&lt; 2);  /* saltar cabecera IP */
+pkt-&gt;curr -= ICMP_HEADER_LEN;                   /* hacer sitio para ICMP */</code></pre>
+<p>Aritmética de punteros, no índices. Si te equivocas en un byte, el protocolo entero se rompe. De ahí los <code>IPv4_TRACE()</code> y las comprobaciones de longitud.</p>
+<p>Conversión puntero ↔ entero (lo verás en las mailboxes):</p>
+<pre><code class="lang-c">mailboxSend(arpqueue, (int)pkt);              /* guardar el puntero como int */
+pkt = (struct packet *)mailboxReceive(arpqueue); /* recuperarlo */</code></pre>
+<p>En 32 bits cabe. Lo correcto en C sería <code>intptr_t</code>, pero el kernel usa <code>int</code>. Cuando una función que devuelve puntero falla, devuelve <code>(void *)SYSERR</code>, y por eso se comprueba así:</p>
+<pre><code class="lang-c">pkt = netGetbuf();
+if (SYSERR == (int)pkt) { ... }</code></pre>
+<h3 id="13-structs-y-tablas">1.3 Structs y tablas</h3>
+<p>El kernel es una colección de <strong>tablas de estructuras</strong>:</p>
+<pre><code class="lang-c">struct thrent thrtab[NTHREAD];   /* hilos        */
+struct sement semtab[NSEM];      /* semáforos    */
+struct monent montab[NMON];      /* monitores    */
+struct mbox   mboxtab[NMAILBOX]; /* mailboxes    */</code></pre>
+<p>Un <code>tid</code>, un <code>semaphore</code>, un <code>monitor</code> y una <code>mailbox</code> son <strong>índices</strong> a esas tablas, no punteros. Por eso son <code>int</code>/<code>uint</code> y por eso <code>isbadtid()</code>, <code>isbadsem()</code>, <code>isbadmon()</code> son macros de rango y estado.</p>
+<h3 id="14-arrays-y-cadenas">1.4 Arrays y cadenas</h3>
+<p>No hay libc. Las funciones están en <code>lib/</code> y se declaran en <code>include/string.h</code>:</p>
+<pre><code class="lang-c">memcpy(dst, src, n);
+bzero(pkt, sizeof(struct packet) + NET_MAX_PKTLEN);
+strlcpy(thrptr-&gt;name, name, TNMLEN);   /* copia segura, siempre acaba en \0 */
+strcmp(a, b);</code></pre>
+<p><code>strlcpy</code> es la que se usa para nombres de hilo y de dispositivo. No hay <code>strcpy</code> "segura": usa <code>strlcpy</code> o <code>memcpy</code> con longitud explícita.</p>
+<h3 id="15-funciones-static-y-prototipos">1.5 Funciones, <code>static</code> y prototipos</h3>
+<ul><li><code>static</code> en una función o global = <strong>solo visible en ese fichero</strong>. Casi todos</li></ul>
+<p>los helpers de los drivers son <code>static</code>.</p>
+<ul><li>Todas las funciones públicas tienen prototipo en <code>include/*.h</code>. El Makefile</li></ul>
+<p>compila con <code>-Wstrict-prototypes</code>, así que <code>f()</code> sin <code>void</code> avisa.</p>
+<ul><li>El valor de retorno <code>SYSERR</code> es <code>-1</code>. Si tu función puede devolver <code>-1</code> como</li></ul>
+<p>valor válido, tienes un problema de diseño (ver mailbox).</p>
+<h3 id="16-punteros-a-función-devtab-y-commandtab">1.6 Punteros a función: <code>devtab</code> y <code>commandtab</code></h3>
+<p>El kernel no tiene <code>switch</code> gigantes para los dispositivos. Usa una tabla de punteros a función generada desde <code>xinu.conf</code>:</p>
+<pre><code class="lang-c">const device devtab[NDEVS] = {
+    { /* ETH0 */
+        .name = &quot;ETH0&quot;,
+        .init = w5500Init,
+        .open = w5500Open,
+        .read = w5500Read,
+        .write = w5500Write,
+        ...
+    },
+};</code></pre>
+<p><code>system/conf.c</code> es <strong>generado</strong>. No lo edites: edita <code>compile/platforms/esp32s3/xinu.conf</code> y vuelve a compilar.</p>
+<p>Lo mismo con el shell (<code>shell/shell.c</code>):</p>
+<pre><code class="lang-c">const struct centry commandtab[] = {
+    {&quot;ping&quot;, FALSE, xsh_ping},
+    {&quot;ps&quot;,   FALSE, xsh_ps},
+    ...
+};</code></pre>
+<p><code>ncommand</code> se calcula con <code>sizeof(commandtab) / sizeof(struct centry)</code>. Añadir un comando es añadir una línea a esa tabla y un prototipo en <code>include/shell.h</code>.</p>
+<h3 id="17-variádicas-create">1.7 Variádicas: <code>create()</code></h3>
+<pre><code class="lang-c">tid_typ create(void *procaddr, uint ssize, int priority,
+               const char *name, int nargs, ...);</code></pre>
+<p>Ejemplo real:</p>
+<pre><code class="lang-c">tid = create(netRecv, NET_THR_STK, NET_THR_PRIO, &quot;ETH0recv00&quot;, 1, netptr);</code></pre>
+<p><code>nargs</code> dice cuántos argumentos siguen. <code>setupStack()</code> (específico de la arquitectura) los copia a la pila del nuevo hilo. En 32 bits cada argumento ocupa una palabra, así que un puntero también se pasa por aquí.</p>
+<p>El hilo debe declararse con la firma correcta:</p>
+<pre><code class="lang-c">thread netRecv(struct netif *netptr) { ... }</code></pre>
+<p>Si te equivocas de firma, el compilador no te avisa (es varargs) y el hilo lee basura. Es un error clásico.</p>
+<h3 id="18-macros">1.8 Macros</h3>
+<pre><code class="lang-c">#define isbadsem(s) ((s &gt;= NSEM) || (SFREE == semtab[s].state))
+#define ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
+#define REG32(addr)  (*(volatile uint32_t *)(addr))</code></pre>
+<p>Cuidado con los efectos secundarios: <code>isbadsem(i++)</code> evalúa <code>i</code> dos veces. Usa una variable.</p>
+<p><code>min</code>/<code>max</code> en <code>kernel.h</code> usan <code>typeof</code> y un bloque de declaración (extensión de GCC). Funcionan, pero no son C99 puro.</p>
+<h3 id="19-volatile-y-registros-de-hardware">1.9 <code>volatile</code> y registros de hardware</h3>
+<p>Los registros del ESP32-S3 se tocan así (<code>include/xtensa.h</code>):</p>
+<pre><code class="lang-c">#define REG32(addr) (*(volatile uint32_t *)(addr))
+
+REG32(SYSTEM_PERIP_CLK_EN0) |= SYS_CLK_EN_SPI2;</code></pre>
+<p><code>volatile</code> impide que el compilador elimine o reordene el acceso. <strong>Sin <code>volatile</code>, un bucle de espera sobre un registro se optimiza a infinito o a nada.</strong> Todos los accesos a MMIO del port lo llevan.</p>
+<h3 id="110-disable-restore">1.10 <code>disable()</code> / <code>restore()</code></h3>
+<pre><code class="lang-c">irqmask im;
+
+im = disable();        /* guarda el estado y enmascara interrupciones */
+...sección crítica corta...
+restore(im);           /* restaura exactamente el estado anterior     */</code></pre>
+<p>No es un contador: cada <code>disable()</code> devuelve la máscara anterior y <code>restore()</code> la repone. Se pueden anidar si guardas cada máscara en su variable. <strong>No</strong> hagas <code>enable()</code> a mano dentro de una sección crítica.</p>
+<p>Uso típico: proteger una estructura de datos muy corta o comprobar+actuar de forma atómica. Para esperar, no uses <code>disable()</code>: usa un semáforo.</p>
+<h3 id="111-memoria">1.11 Memoria</h3>
+<ul><li><code>memget(n)</code> / <code>memfree(p, n)</code>: heap del kernel en SRAM interna.</li><li><code>psram_memget</code> / <code>psram_memfree</code>: heap en PSRAM.</li><li><code>stkget(n)</code> / <code>stkfree</code>: pilas de hilo. En este port <strong>prefiere PSRAM</strong> y cae</li></ul>
+<p>a SRAM si no hay.</p>
+<ul><li><code>create()</code> usa <code>stkget()</code>, así que las pilas de los hilos viven en PSRAM.</li><li><code>mailboxAlloc()</code> usa <code>memget()</code>: la cola de mensajes está en SRAM interna.</li></ul>
+<p>Consecuencia práctica: una mailbox de 1000 enteros son 4 KB del heap interno. No es gratis.</p>
+<h3 id="112-errores-de-c-que-más-duelen-aquí">1.12 Errores de C que más duelen aquí</h3>
+<ol><li><strong><code>SYSERR</code> vs valor válido.</strong> <code>-1</code> es error. Si tu dato puede ser <code>-1</code>, no</li></ol>
+<p>uses <code>-1</code> como “fin de cola” sin documentarlo (ver mailbox).</p>
+<ol><li><strong><code>sizeof</code> de un puntero.</strong> <code>sizeof(pkt-&gt;data)</code> es 1 (es <code>uchar data[1]</code>),</li></ol>
+<p>no el tamaño del buffer.</p>
+<ol><li><strong>Signed/unsigned.</strong> <code>monitor</code>, <code>semaphore</code> y <code>mailbox</code> son <code>unsigned int</code>.</li></ol>
+<p>Comparar con <code>SYSERR</code> (<code>-1</code>) funciona por conversión, pero no es elegante.</p>
+<ol><li><strong>Pasarse de longitud.</strong> El bug de <code>wget</code> con el header de 512 bytes se</li></ol>
+<p>arregló subiendo <code>hdr[512]</code> a <code>hdr[1024]</code>; un byte de más o de menos y el fichero sale corrupto.</p>
+<ol><li><strong>No inicializar.</strong> Las variables globales van a <code>.bss</code> (cero), pero las</li></ol>
+<p>locales de pila no. <code>bzero()</code> es tu amigo.</p>
+<ol><li><strong>Aliasing.</strong> El Makefile usa <code>-fno-strict-aliasing</code> justamente para que</li></ol>
+<p>estos casts funcionen como la gente espera.</p>
+<ol><li><strong>Pila pequeña.</strong> <code>INITSTK</code> son 4096 bytes. Un <code>char buf[8192]</code> local revienta</li></ol>
+<p>el hilo. Usa <code>memget</code>/PSRAM para buffers grandes.</p>
+<hr>
+<h2 id="2-semáforos">2. Semáforos</h2>
+<h3 id="21-qué-hay-dentro">2.1 Qué hay dentro</h3>
+<p><code>include/semaphore.h</code>:</p>
+<pre><code class="lang-c">struct sement
+{
+    char    state;   /* SFREE o SUSED          */
+    int     count;   /* contador (puede ser &lt; 0) */
+    qid_typ queue;   /* cola de hilos dormidos  */
+};</code></pre>
+<p>Un semáforo es <strong>un contador y una cola de espera</strong>. Nada más. No lleva datos y no sabe quién lo tiene.</p>
+<h3 id="22-api">2.2 API</h3>
+<pre><code class="lang-c">semaphore semcreate(int count);   /* count &gt;= 0; SYSERR si no hay slots */
+syscall   wait(semaphore sem);    /* --count; si &lt; 0, duerme            */
+syscall   signal(semaphore sem);  /* ++count; si había &lt; 0, despierta   */
+syscall   signaln(semaphore sem, int n);
+syscall   semcount(semaphore sem);
+syscall   semfree(semaphore sem);</code></pre>
+<p><code>semfree()</code> despierta a todos los que esperan y marca el slot como libre.</p>
+<h3 id="23-los-tres-usos">2.3 Los tres usos</h3>
+<p><strong>a) Llave (mutex binario)</strong> — <code>semcreate(1)</code></p>
+<pre><code class="lang-c">semaphore llave = semcreate(1);
+
+wait(llave);
+/* sección crítica */
+signal(llave);</code></pre>
+<p><strong>b) Evento / aviso</strong> — <code>semcreate(0)</code></p>
+<pre><code class="lang-c">semaphore listo = semcreate(0);
+
+/* hilo A: produce */
+...trabajo...
+signal(listo);
+
+/* hilo B: consume */
+wait(listo);      /* duerme hasta que A avise */
+...usar el resultado...</code></pre>
+<p><strong>c) Contador de recursos</strong> — <code>semcreate(N)</code></p>
+<pre><code class="lang-c">semaphore huecos = semcreate(4);   /* 4 recursos libres */
+
+wait(huecos);    /* coge uno; si no hay, duerme */
+...usar...
+signal(huecos);  /* devuelve uno */</code></pre>
+<p>El pool de buffers de red es exactamente esto (<code>system/bfpalloc.c</code>):</p>
+<pre><code class="lang-c">bfpptr-&gt;freebuf = semcreate(0);
+...
+signaln(bfpptr-&gt;freebuf, nbuf);    /* N buffers disponibles */</code></pre>
+<p><code>netGetbuf()</code> hace <code>wait(bfpptr-&gt;freebuf)</code> y <code>netFreebuf()</code> hace <code>signaln(..., 1)</code>. Si no hay buffers, el hilo de recepción duerme en vez de girar en vacío.</p>
+<h3 id="24-traza-de-contadores">2.4 Traza de contadores</h3>
+<p><code>semcreate(1)</code>:</p>
+<table>
+<thead><tr><th>Operación</th><th><code>count</code> antes</th><th><code>count</code> después</th><th>Efecto</th></tr></thead>
+<tbody>
+<tr><td><code>wait()</code></td><td>1</td><td>0</td><td>entra</td></tr>
+<tr><td><code>wait()</code></td><td>0</td><td>-1</td><td><strong>duerme</strong></td></tr>
+<tr><td><code>signal()</code></td><td>-1</td><td>0</td><td>despierta a uno</td></tr>
+<tr><td><code>signal()</code></td><td>0</td><td>1</td><td>queda un permiso</td></tr>
+</tbody></table>
+<p><code>count</code> negativo = <strong>número de hilos dormidos</strong>. Por eso <code>semcount()</code> puede devolver un negativo; no es un error.</p>
+<p><code>semcreate(0)</code>:</p>
+<table>
+<thead><tr><th>Operación</th><th>antes</th><th>después</th><th>Efecto</th></tr></thead>
+<tbody>
+<tr><td><code>wait()</code></td><td>0</td><td>-1</td><td>duerme</td></tr>
+<tr><td><code>signal()</code></td><td>-1</td><td>0</td><td>despierta</td></tr>
+</tbody></table>
+<p>El hilo que despierta <strong>no vuelve a decrementar</strong>: su <code>wait()</code> ya lo hizo antes de dormir. Por eso el contador queda en 0, no en -1.</p>
+<h3 id="25-el-error-clásico-con-semáforos">2.5 El error clásico con semáforos</h3>
+<p>Un semáforo <strong>no tiene dueño</strong>. Cualquiera puede hacer <code>signal()</code>, y si lo hace cuando no hay nadie esperando, el contador sube:</p>
+<pre><code class="lang-c">semaphore s = semcreate(1);
+
+/* hilo A */
+wait(s);        /* count 0 */
+...
+signal(s);      /* count 1 */
+
+/* hilo B, por error, también hace signal() */
+signal(s);      /* count 2  &lt;-- roto */
+
+/* ahora dos hilos pueden entrar a la vez */</code></pre>
+<p>Ese es el motivo por el que existe el monitor.</p>
+<h3 id="26-trampas">2.6 Trampas</h3>
+<ul><li><strong>No duermas dentro de una sección crítica</strong> protegida con un semáforo: si el</li></ul>
+<p>hilo duerme, nadie más entra.</p>
+<ul><li><strong>No liberes un semáforo en uso.</strong> <code>semfree()</code> despierta a los que esperan y</li></ul>
+<p>ellos continúan como si nada; si además hay un <code>signal()</code> pendiente, el resultado es impredecible.</p>
+<ul><li><strong>No uses <code>wait()</code> en un ISR.</strong> Un manejador de interrupción no puede dormir.</li></ul>
+<p><code>signal()</code> desde un ISR es tentador, pero en este port <code>ready(..., RESCHED_YES)</code> puede intentar un cambio de contexto dentro de la interrupción, y eso es justo el punto frágil de <code>ctxsw.S</code>. Si necesitas avisar desde un ISR, deja una bandera y despierta a un hilo fuera.</p>
+<ul><li><strong>No hay herencia de prioridad.</strong> Si un hilo de prioridad baja tiene la llave</li></ul>
+<p>y uno de prioridad alta la espera, los hilos de prioridad media pueden adelantar al dueño. Mantén las secciones críticas cortas; si el caso es grave, sube temporalmente la prioridad del dueño con <code>chprio()</code>.</p>
+<hr>
+<h2 id="3-monitores">3. Monitores</h2>
+<h3 id="31-qué-añade-sobre-un-semáforo">3.1 Qué añade sobre un semáforo</h3>
+<p><code>include/monitor.h</code>:</p>
+<pre><code class="lang-c">struct monent
+{
+    char     state;   /* MFREE o MUSED     */
+    tid_typ  owner;   /* hilo dueño, o NOOWNER */
+    uint     count;   /* profundidad de lock   */
+    semaphore sem;    /* semáforo interno (1)  */
+};</code></pre>
+<p>Un monitor es <strong>un semáforo de 1 + dueño + contador de recursión</strong>. Su objetivo es proteger una <strong>región</strong> (una secuencia de operaciones), no solo una variable.</p>
+<h3 id="32-cómo-funciona">3.2 Cómo funciona</h3>
+<p><code>lock()</code> (<code>system/lock.c</code>), en esencia:</p>
+<pre><code class="lang-c">if (NOOWNER == monptr-&gt;owner)
+{
+    monptr-&gt;owner = thrcurrent;
+    monptr-&gt;count = 1;
+    wait(monptr-&gt;sem);          /* consume el 1 inicial */
+}
+else if (thrcurrent == monptr-&gt;owner)
+{
+    monptr-&gt;count++;            /* recursivo: no espera */
+}
+else
+{
+    wait(monptr-&gt;sem);          /* otro lo tiene: duerme */
+    monptr-&gt;owner = thrcurrent;
+    monptr-&gt;count = 1;
+}</code></pre>
+<p><code>unlock()</code>:</p>
+<pre><code class="lang-c">monptr-&gt;count--;
+if (0 == monptr-&gt;count)
+{
+    monptr-&gt;owner = NOOWNER;
+    signal(monptr-&gt;sem);        /* despierta al siguiente */
+}</code></pre>
+<p>Traza:</p>
+<table>
+<thead><tr><th>Operación</th><th><code>owner</code></th><th><code>count</code></th><th>Efecto</th></tr></thead>
+<tbody>
+<tr><td><code>lock()</code></td><td>yo</td><td>1</td><td>entra</td></tr>
+<tr><td><code>lock()</code> otra vez</td><td>yo</td><td>2</td><td><strong>no</strong> se bloquea</td></tr>
+<tr><td><code>unlock()</code></td><td>yo</td><td>1</td><td>no libera</td></tr>
+<tr><td><code>unlock()</code></td><td>NOOWNER</td><td>0</td><td>despierta a otro</td></tr>
+</tbody></table>
+<p><code>moncount(m)</code> devuelve la profundidad actual (0 si está libre). Si un hilo muere con el monitor cogido, <code>moncount()</code> te dice cuántos <code>unlock()</code> hacen falta para recuperarlo.</p>
+<h3 id="33-semáforo1-vs-monitor-las-diferencias-que-importan">3.3 Semáforo(1) vs monitor: las diferencias que importan</h3>
+<table>
+<thead><tr><th>Pregunta</th><th>Semáforo(1)</th><th>Monitor</th></tr></thead>
+<tbody>
+<tr><td>¿Sabe quién lo tiene?</td><td>No</td><td>Sí (<code>owner</code>)</td></tr>
+<tr><td>¿Se puede anidar?</td><td>No: el segundo <code>wait</code> se bloquea</td><td>Sí: <code>count++</code></td></tr>
+<tr><td>¿Se puede sobre-liberar?</td><td>Sí: dos <code>signal</code> dejan <code>count=2</code></td><td>No: <code>unlock</code> con <code>count=0</code> da <code>SYSERR</code></td></tr>
+<tr><td>¿Se puede recuperar si muere el dueño?</td><td>No hay forma de saberlo</td><td><code>moncount()</code> dice cuántos <code>unlock</code> faltan</td></tr>
+<tr><td>¿Se ve en <code>sem</code>/<code>mon</code>?</td><td><code>sem</code>: contador y si hay waiters</td><td><code>mon</code>: dueño y profundidad</td></tr>
+<tr><td>Coste</td><td>mínimo</td><td>1 semáforo + entrada</td></tr>
+</tbody></table>
+<p><strong>Cuidado:</strong> en esta implementación, <code>unlock()</code> <strong>no comprueba</strong> que el llamante sea el dueño. Un hilo distinto puede decrementar el contador del dueño. La protección es “por convención”: solo el dueño hace <code>unlock</code>. No escribas código que dependa de que el kernel te lo impida.</p>
+<p><strong>Lo que un monitor NO es:</strong> no es una variable de condición. No hay <code>monwait()</code>/<code>monsignal()</code>. Si necesitas “esperar a que se cumpla X”, tienes dos opciones:</p>
+<pre><code class="lang-c">/* Opción 1: soltar el monitor y esperar un semáforo */
+unlock(m);
+wait(evento);
+lock(m);
+
+/* Opción 2: bucle con sleep (menos elegante, pero simple) */
+while (!condicion)
+{
+    unlock(m);
+    sleep(1);
+    lock(m);
+}</code></pre>
+<h3 id="34-ejemplo-real-el-bus-spi">3.4 Ejemplo real: el bus SPI</h3>
+<p>El W5500 es <strong>un</strong> dispositivo en <strong>un</strong> bus. Una transacción no es un solo registro: es “leo el tamaño, leo la cabecera, leo los datos”. Si otro hilo se cuela en medio, el chip recibe una mezcla y devuelve basura.</p>
+<p><code>device/w5500/w5500Read.c</code>:</p>
+<pre><code class="lang-c">for (tries = 0; tries &lt; W5500_RX_TRIES; tries++)
+{
+    lock(ethptr-&gt;lock);
+
+    rxsize = w5500Read16(W5500_SN_RX_RSR, ...);
+    if (0 == rxsize)
+    {
+        unlock(ethptr-&gt;lock);   /* esperar FUERA del monitor */
+        sleep(1);
+        continue;
+    }
+
+    rd = w5500Read16(W5500_SN_RX_RD, ...);
+    w5500ReadBuf(rd, ..., hdr, 2);
+    ...
+    unlock(ethptr-&gt;lock);
+    return len;
+}</code></pre>
+<p>Dos cosas que aprender de aquí:</p>
+<ol><li>El monitor protege <strong>la secuencia completa</strong>, no cada acceso suelto.</li><li>La espera (<code>sleep</code>) va <strong>fuera</strong> del monitor. Si durmieras con la llave</li></ol>
+<p>cogida, el <code>httpd</code> no podría transmitir y la red se pararía.</p>
+<p>La FAT tiene su propio monitor (<code>fs/Src/fatPort.c</code>, <code>s_fat_mon</code>) por la misma razón: las operaciones de fichero no son reentrantes.</p>
+<h3 id="35-reglas-de-oro-con-monitores">3.5 Reglas de oro con monitores</h3>
+<ol><li>Un <code>lock</code> por cada <code>unlock</code>, en el mismo nivel.</li><li>No duermas, no hagas E/S larga, no llames a <code>mailboxReceive</code> con el monitor</li></ol>
+<p>cogido.</p>
+<ol><li>Si necesitas dos monitores, define un <strong>orden global</strong> y respétalo siempre.</li></ol>
+<p><code>lock(A); lock(B);</code> está bien; en otro sitio <code>lock(B); lock(A);</code> es un interbloqueo.</p>
+<ol><li>No liberes un monitor en uso. <code>monfree()</code> con dueño o con waiters deja el</li></ol>
+<p>estado inconsistente. Libéralo al apagar, no en caliente.</p>
+<ol><li>Si el recurso es un contador o un aviso, no hace falta monitor: un semáforo</li></ol>
+<p>es más barato y más claro.</p>
+<hr>
+<h2 id="4-mailboxes">4. Mailboxes</h2>
+<h3 id="41-qué-hay-dentro">4.1 Qué hay dentro</h3>
+<p><code>include/mailbox.h</code>:</p>
+<pre><code class="lang-c">struct mbox
+{
+    semaphore sender;    /* huecos libres  (empieza en N) */
+    semaphore receiver;  /* mensajes listos (empieza en 0) */
+    uint max;            /* capacidad                      */
+    uint count;          /* mensajes dentro                */
+    uint start;          /* índice del primero             */
+    uchar state;         /* MAILBOX_FREE / MAILBOX_ALLOC   */
+    int *msgs;           /* array circular en el heap      */
+};</code></pre>
+<p>Es un <strong>array circular + dos semáforos</strong>. No hay magia.</p>
+<p><code>mailboxSend</code>:</p>
+<pre><code class="lang-c">wait(mbxptr-&gt;sender);                        /* si está llena, duerme */
+mbxptr-&gt;msgs[(start + count) % max] = msg;
+mbxptr-&gt;count++;
+signal(mbxptr-&gt;receiver);                    /* avisa al consumidor */</code></pre>
+<p><code>mailboxReceive</code>:</p>
+<pre><code class="lang-c">wait(mbxptr-&gt;receiver);                      /* si está vacía, duerme */
+msg = mbxptr-&gt;msgs[start];
+start = (start + 1) % max;
+count--;
+signal(mbxptr-&gt;sender);                      /* libera un hueco */</code></pre>
+<h3 id="42-api">4.2 API</h3>
+<pre><code class="lang-c">mailbox mailboxAlloc(uint count);     /* count = nº de mensajes */
+syscall mailboxSend(mailbox box, int msg);
+syscall mailboxReceive(mailbox box);  /* devuelve el mensaje o SYSERR */
+syscall mailboxCount(mailbox box);
+syscall mailboxFree(mailbox box);</code></pre>
+<ul><li><code>mailboxAlloc</code> reserva <code>count * sizeof(int)</code> con <code>memget</code> (heap interno) y</li></ul>
+<p>crea los dos semáforos.</p>
+<ul><li><code>mailboxSend</code> se bloquea si está llena (<strong>backpressure</strong>).</li><li><code>mailboxReceive</code> se bloquea si está vacía.</li><li><code>mailboxFree</code> libera los semáforos y la memoria. No la uses mientras haya</li></ul>
+<p>hilos esperando.</p>
+<h3 id="43-ejemplo-real-arp-e-icmp">4.3 Ejemplo real: ARP e ICMP</h3>
+<p><code>network/arp/arpInit.c</code>:</p>
+<pre><code class="lang-c">arpqueue = mailboxAlloc(ARP_NQUEUE);
+ready(create((void *)arpDaemon, ARP_THR_STK, ARP_THR_PRIO,
+             &quot;arpDaemon&quot;, 0), RESCHED_NO);</code></pre>
+<p><code>network/arp/arpRecv.c</code> (corre en el hilo de recepción):</p>
+<pre><code class="lang-c">mailboxSend(arpqueue, (int)pkt);   /* deja el paquete y vuelve */</code></pre>
+<p><code>network/arp/arpDaemon.c</code>:</p>
+<pre><code class="lang-c">pkt = (struct packet *)mailboxReceive(arpqueue);
+arpSendReply(pkt);
+netFreebuf(pkt);</code></pre>
+<p>Y exactamente igual con ICMP (<code>network/icmp/icmpInit.c</code>, <code>icmpRecv.c</code>, <code>icmpDaemon.c</code>).</p>
+<p><strong>Por qué está así:</strong> el hilo de recepción no puede entretenerse respondiendo. Si lo hiciera, el buffer RX del W5500 se llenaría y la red se pararía. La mailbox convierte “responder” en un trabajo de otro hilo.</p>
+<h3 id="44-cómo-sabe-un-proceso-que-el-mensaje-es-para-él">4.4 “¿Cómo sabe un proceso que el mensaje es para él?”</h3>
+<p><strong>No lo sabe, y no hace falta.</strong> Una mailbox <strong>no tiene destinatario</strong>. Es una cola con un número; el que tiene el número puede meter o sacar.</p>
+<p>El patrón es <strong>una mailbox por servicio</strong>, no una por proceso:</p>
+<ul><li><code>arpqueue</code> es <em>la cola del servicio ARP</em>.</li><li><code>icmpqueue</code> es <em>la cola del servicio ICMP</em>.</li><li>El dueño del servicio es el único que hace <code>mailboxReceive</code>.</li><li>Los productores solo conocen el número y hacen <code>mailboxSend</code>.</li></ul>
+<p>Si varios hilos hacen <code>receive</code> de la misma mailbox, cada mensaje va a <strong>uno</strong> de ellos (se reparten el trabajo), no a todos. Para difusión necesitas varias mailboxes o copias.</p>
+<p>Si de verdad necesitas punto a punto, no uses una mailbox: usa <code>send(tid, msg)</code> (siguiente sección) o dale a cada proceso su propia mailbox y publica el número.</p>
+<h3 id="45-trampas">4.5 Trampas</h3>
+<ul><li><strong><code>-1</code> es ambiguo.</strong> <code>mailboxReceive</code> devuelve <code>SYSERR</code> (<code>-1</code>) en error, pero</li></ul>
+<p><code>-1</code> también puede ser un mensaje válido. Usa IDs ≥ 0 y un valor de fin distinto, o un flag aparte.</p>
+<ul><li><strong>Es una cola acotada.</strong> Si el consumidor es más lento que los productores,</li></ul>
+<p>los productores se bloquean. Eso es una feature (control de flujo), pero asegúrate de que el consumidor no dependa de uno de esos productores para avanzar, o tendrás un interbloqueo.</p>
+<ul><li><strong>El mensaje es un <code>int</code>.</strong> Si mandas un puntero, define <strong>quién libera</strong> la</li></ul>
+<p>memoria. En ARP, el demonio hace <code>netFreebuf()</code>; el productor no vuelve a tocarlo.</p>
+<ul><li><strong>No liberes la mailbox con waiters.</strong> <code>mailboxFree</code> hace <code>semfree</code> de los dos</li></ul>
+<p>semáforos; los que estaban esperando se despiertan y ven <code>state != ALLOC</code>, pero es mejor no llegar ahí.</p>
+<ul><li><strong>La cola está en SRAM interna.</strong> <code>mailboxAlloc(1000)</code> son 4 KB del heap del</li></ul>
+<p>kernel. Para colas grandes, usa otra estructura en PSRAM.</p>
+<hr>
+<h2 id="5-mensajes-de-hilo-sendreceive">5. Mensajes de hilo (<code>send</code>/<code>receive</code>)</h2>
+<h3 id="51-qué-es">5.1 Qué es</h3>
+<p>Cada entrada de <code>thrtab[]</code> tiene <strong>un solo slot</strong>:</p>
+<pre><code class="lang-c">message msg;      /* el mensaje   */
+bool    hasmsg;   /* ¿hay mensaje? */</code></pre>
+<pre><code class="lang-c">syscall send(tid_typ tid, message msg);
+message receive(void);
+message recvclr(void);
+message recvtime(int ticks);</code></pre>
+<ul><li><code>send(tid, msg)</code> <strong>sí tiene destinatario</strong>: deposita el mensaje en el slot de</li></ul>
+<p>ese <code>tid</code>. Si el hilo está en <code>THRRECV</code>, lo despierta.</p>
+<ul><li><code>send</code> <strong>falla</strong> si <code>tid</code> no existe, está libre, o <strong>ya tiene un mensaje</strong></li></ul>
+<p>(<code>hasmsg</code>). Es un slot, no una cola.</p>
+<ul><li><code>receive()</code> se bloquea si no hay mensaje.</li><li><code>recvtime(ticks)</code> se bloquea como máximo <code>ticks</code> (con</li></ul>
+<p><code>CLKTICKS_PER_SEC = 1000</code>, 1000 = 1 segundo) y devuelve <code>TIMEOUT</code>.</p>
+<ul><li><code>recvclr()</code> limpia el mensaje pendiente.</li></ul>
+<h3 id="52-ejemplo-ping">5.2 Ejemplo: ping</h3>
+<p><code>icmpRecv</code> (camino de respuesta):</p>
+<pre><code class="lang-c">id = net2hs(echo-&gt;id);        /* el id que puso el ping = su tid */
+...
+send(id, (message)pkt);       /* despierta al hilo que pingó    */</code></pre>
+<p><code>xsh_ping</code>:</p>
+<pre><code class="lang-c">if (OK != icmpEchoRequest(&amp;target, gettid(), i)) { ... }
+...
+if (TIMEOUT != recvtime(intervalticks))
+{
+    /* recoger la respuesta */
+}</code></pre>
+<p>El ping <strong>mete su propio <code>tid</code> en el campo <code>id</code> del ICMP</strong>. Cuando llega el reply, <code>icmpRecv</code> lo saca y hace <code>send()</code> a ese <code>tid</code>. Esa es toda la “dirección”: viaja dentro del protocolo.</p>
+<p>Detalle fino: como <code>send</code> es un solo slot, <code>icmpRecv</code> no lo usa como cola. Guarda el paquete en <code>echotab[]</code> (una cola por <code>tid</code>) y usa <code>send</code> solo como <strong>despertador</strong>. Si el hilo ya tenía un mensaje, el paquete se queda en la cola y se procesa igualmente.</p>
+<h3 id="53-cuándo-usarlo">5.3 Cuándo usarlo</h3>
+<ul><li>Cuando la respuesta debe ir a <strong>un hilo concreto</strong> y conoces su <code>tid</code>.</li><li>Cuando el emisor no puede permitirse bloquearse si el receptor ya tiene un</li></ul>
+<p>mensaje pendiente (ping solo tiene uno en vuelo).</p>
+<ul><li><strong>No</strong> cuando necesitas una cola: usa mailbox.</li></ul>
+<hr>
+<h2 id="6-cómo-elegir-y-no-liarse">6. Cómo elegir (y no liarse)</h2>
+<h3 id="61-tabla">6.1 Tabla</h3>
+<table>
+<thead><tr><th>Necesitas…</th><th>Usa…</th><th>Porque…</th></tr></thead>
+<tbody>
+<tr><td>Que dos hilos no toquen lo mismo a la vez</td><td><strong>Monitor</strong></td><td>Dueño, recursivo, se ve en <code>mon</code></td></tr>
+<tr><td>“Espera a que ocurra X”</td><td><strong>Semáforo(0)</strong></td><td>El evento queda como permiso</td></tr>
+<tr><td>Contar recursos (buffers, plazas)</td><td><strong>Semáforo(N)</strong></td><td><code>wait</code>/<code>signal</code> es el contador</td></tr>
+<tr><td>Pasar trabajos a un servicio</td><td><strong>Mailbox</strong></td><td>Cola acotada + backpressure</td></tr>
+<tr><td>Responder a un hilo concreto</td><td><strong><code>send(tid)</code></strong></td><td>Direccionado por <code>tid</code></td></tr>
+<tr><td>Proteger una secuencia con E/S</td><td><strong>Monitor</strong></td><td>La sección crítica es la secuencia</td></tr>
+</tbody></table>
+<h3 id="62-árbol-de-decisión">6.2 Árbol de decisión</h3>
+<pre><code>¿Hay que mover datos de un hilo a otro?
+├── NO  -&gt; ¿Hace falta exclusión mutua sobre un recurso?
+│         ├── SÍ -&gt; monitor (o semáforo(1) si eres disciplinado)
+│         └── NO -&gt; ¿Solo avisar o contar?
+│                   └── semáforo(0) / semáforo(N)
+└── SÍ  -&gt; ¿El receptor es un servicio (uno cualquiera) o un hilo concreto?
+          ├── servicio -&gt; mailbox
+          └── concreto -&gt; send(tid)</code></pre>
+<h3 id="63-semáforo-vs-monitor-en-una-frase">6.3 Semáforo vs monitor, en una frase</h3>
+<p><strong>El semáforo es un contador; el monitor es un contador con dueño y recursión.</strong> Si solo necesitas “esperar/avisar”, semáforo. Si necesitas “esta secuencia no se mezcla con otra”, monitor.</p>
+<p>Y el detalle que te confundía: <strong>un semáforo de 1 y un monitor parecen lo mismo cuando todo va bien</strong>. La diferencia aparece cuando algo va mal: un <code>signal</code> de más, un <code>unlock</code> anidado, un hilo que muere con la llave. El monitor está pensado para eso; el semáforo no.</p>
+<h3 id="64-patrones-útiles">6.4 Patrones útiles</h3>
+<p><strong>Productor/consumidor con mailbox</strong></p>
+<pre><code class="lang-c">#define N 8
+mailbox cola = mailboxAlloc(N);
+
+/* productor */
+mailboxSend(cola, trabajo);
+
+/* consumidor */
+trabajo = mailboxReceive(cola);</code></pre>
+<p><strong>Señal de terminación</strong></p>
+<pre><code class="lang-c">/* productor */
+mailboxSend(cola, -1);   /* fin */
+
+/* consumidor */
+while ((msg = mailboxReceive(cola)) != -1) { ... }</code></pre>
+<p><strong>Esperar a que N hilos terminen</strong></p>
+<pre><code class="lang-c">semaphore hechos = semcreate(0);
+
+/* cada worker, al terminar */
+signal(hechos);
+
+/* el padre */
+for (i = 0; i &lt; N; i++) wait(hechos);</code></pre>
+<p><strong>Proteger un contador y un índice juntos</strong></p>
+<pre><code class="lang-c">lock(m);
+buffer[idx] = dato;
+idx++;
+unlock(m);</code></pre>
+<p>Los dos campos son una sola invariante; si los tocas por separado, el lector puede ver <code>idx</code> actualizado y <code>dato</code> viejo.</p>
+<hr>
+<h2 id="7-estudio-de-caso-un-ping-completo">7. Estudio de caso: un ping completo</h2>
+<h3 id="71-capas">7.1 Capas</h3>
+<pre><code> ping / httpd / telnet / wget          &lt;- hilos de usuario
+        |         |
+      ICMP      TCP / UDP
+        |         |
+        +--&gt; IPv4 &lt;+
+              |
+   ARP -----&gt; netSend / netRecv        &lt;- struct netif (IP, mask, MAC, MTU, dev)
+              |
+        read(ETH0) / write(ETH0)       &lt;- devtab[ETH0]
+              |
+        w5500Read / w5500Write         &lt;- lock(ethptr-&gt;lock)  [monitor]
+              |
+        registros SPI2 (w5500Spi.c)    &lt;- sin locks, hardware
+              |
+        W5500 en MACRAW                &lt;- solo tramas, no entiende IP
+              |
+            cable</code></pre>
+<p>El W5500 <strong>no hace ARP, ni IP, ni TCP</strong>. Está en MACRAW: entrega y recibe tramas Ethernet. Todo lo demás son hilos de Xinu.</p>
+<h3 id="72-el-host-hace-ping-a-la-placa">7.2 El host hace ping a la placa</h3>
+<ol><li>La trama llega al W5500 y queda en su buffer RX.</li><li><code>ETH0recv00</code> está dormido en <code>read(ETH0)</code> → <code>w5500Read</code>, que hace polling de</li></ol>
+<p><code>Sn_RX_RSR</code> cada 10 ms. Al haber trama: <code>lock(ethptr-&gt;lock)</code>, lee cabecera + datos por SPI, <code>unlock</code>.</p>
+<ol><li><code>netRecv</code> tiene el paquete en un buffer del pool (<code>netGetbuf</code>). Ethertype</li></ol>
+<p>IPv4 → <code>ipv4Recv</code>.</p>
+<ol><li><code>ipv4Recv</code> valida, comprueba que la IP es nuestra, **aprende la MAC del</li></ol>
+<p>emisor** (<code>arpLearn</code>) y despacha: ICMP → <code>icmpRecv</code>.</p>
+<ol><li><code>icmpRecv</code> ve <code>ICMP_ECHO</code> y <strong>no responde</strong>. Hace:</li></ol>
+<pre><code class="lang-c">   mailboxSend(icmpqueue, (int)pkt);
+   return OK;</code></pre>
+<ol><li><code>icmpDaemon</code> estaba dormido en <code>mailboxReceive(icmpqueue)</code>. Se despierta,</li></ol>
+<p>hace <code>icmpEchoReply(pkt)</code> → <code>icmpSend</code> → <code>ipv4Send</code> → <code>netSend</code>.</p>
+<ol><li><code>netSend</code> pone la cabecera Ethernet, busca la MAC (ya aprendida, no bloquea)</li></ol>
+<p>y hace <code>write(ETH0, ...)</code> → <code>w5500Write</code> → SPI → <code>SEND</code>.</p>
+<ol><li>El host recibe el reply.</li></ol>
+<p>Si el hilo de recepción respondiera él mismo, el buffer RX se llenaría mientras construye la respuesta. Por eso hay mailbox y demonio.</p>
+<h3 id="73-la-placa-hace-ping-al-host">7.3 La placa hace ping al host</h3>
+<ol><li><code>xsh_ping</code> llama a <code>icmpEchoRequest(&amp;target, gettid(), seq)</code>. **Su <code>tid</code> va</li></ol>
+<p>en el campo <code>id</code> del ICMP.**</p>
+<ol><li><code>icmpSend</code> → <code>ipv4Send</code> → <code>netSend</code> → <code>arpLookup</code>.</li><li>Si no conoce la MAC: crea una entrada <code>ARP_UNRESOLVED</code>, apunta su <code>tid</code> en</li></ol>
+<p><code>entry-&gt;waiting[]</code>, manda el ARP request y se duerme en <code>recvtime()</code>.</p>
+<ol><li>Llega el ARP reply → <code>ETH0recv00</code> → <code>netRecv</code> → <code>arpRecv</code>. Actualiza la tabla</li></ol>
+<p>y llama a <code>arpNotify</code>, que hace <code>send(tid, ...)</code> a cada hilo de <code>waiting[]</code>.</p>
+<ol><li>El ping se despierta, ya tiene la MAC y manda el ICMP.</li><li>Se duerme en <code>recvtime(intervalticks)</code> esperando el echo reply.</li><li>Llega el reply → <code>icmpRecv</code> ve <code>ICMP_ECHOREPLY</code>, saca el <code>id</code> (= <code>tid</code>), guarda</li></ol>
+<p>el paquete en <code>echotab</code> y hace <code>send(id, pkt)</code>. El ping se despierta y calcula el RTT.</p>
+<h3 id="74-quién-usa-qué">7.4 Quién usa qué</h3>
+<table>
+<thead><tr><th>Mecanismo</th><th>Dónde</th><th>Para qué</th></tr></thead>
+<tbody>
+<tr><td>Semáforo</td><td><code>bfpalloc</code>/<code>bufget</code></td><td>Contar buffers libres</td></tr>
+<tr><td>Semáforo</td><td>dentro de mailbox y monitor</td><td>Implementarlos</td></tr>
+<tr><td>Monitor</td><td><code>ethptr-&gt;lock</code></td><td>Que el SPI no se mezcle</td></tr>
+<tr><td>Monitor</td><td><code>s_fat_mon</code></td><td>Que la FAT no se mezcle</td></tr>
+<tr><td>Mailbox</td><td><code>arpqueue</code></td><td>Trabajos ARP sin bloquear recepción</td></tr>
+<tr><td>Mailbox</td><td><code>icmpqueue</code></td><td>Trabajos ICMP sin bloquear recepción</td></tr>
+<tr><td><code>send</code>/<code>receive</code></td><td>reply de ping</td><td>Respuesta a un <code>tid</code> concreto</td></tr>
+<tr><td><code>send</code>/<code>receive</code></td><td><code>arpNotify</code></td><td>Avisar a quien espera resolución</td></tr>
+</tbody></table>
+<p><strong>La misma pila usa las dos cosas en el mismo flujo.</strong> Cuando es trabajo de un servicio, mailbox; cuando es respuesta a alguien, <code>send(tid)</code>. Ahí está la respuesta a tu duda.</p>
+<hr>
+<h2 id="8-cómo-modificar-el-kernel">8. Cómo modificar el kernel</h2>
+<h3 id="81-añadir-un-fichero-c">8.1 Añadir un fichero <code>.c</code></h3>
+<p>Cada directorio tiene un <code>Makerules</code> con la lista <code>C_FILES</code>. Por ejemplo, <code>system/Makerules</code>:</p>
+<pre><code class="lang-make">C_FILES += misemaforo.c</code></pre>
+<p>Si creas un <strong>directorio nuevo</strong> (por ejemplo <code>midrv/</code>), tienes que añadirlo a <code>APPCOMPS</code> (código) o <code>DEVICES</code> (driver) en <code>compile/platforms/esp32s3/platformVars</code>:</p>
+<pre><code class="lang-make">APPCOMPS := shell apps mailbox network fs midrv</code></pre>
+<p>y el directorio debe tener su <code>Makerules</code> con <code>COMP</code> y <code>C_FILES</code>.</p>
+<h3 id="82-añadir-un-comando-al-shell">8.2 Añadir un comando al shell</h3>
+<p>Cuatro pasos:</p>
+<ol><li>Crea <code>shell/xsh_midemo.c</code>:</li></ol>
+<pre><code class="lang-c">#include &lt;kernel.h&gt;
+#include &lt;shell.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;thread.h&gt;
+
+shellcmd xsh_midemo(int nargs, char *args[])
+{
+    (void)nargs;
+    (void)args;
+
+    printf(&quot;hola desde midemo\n&quot;);
+    return SHELL_OK;
+}</code></pre>
+<ol><li>Añade el prototipo en <code>include/shell.h</code>:</li></ol>
+<pre><code class="lang-c">shellcmd xsh_midemo(int, char *[]);</code></pre>
+<ol><li>Añade la entrada en <code>shell/shell.c</code>:</li></ol>
+<pre><code class="lang-c">{&quot;midemo&quot;, FALSE, xsh_midemo},</code></pre>
+<ol><li>Añade el fichero a <code>shell/Makerules</code>:</li></ol>
+<pre><code class="lang-make">C_FILES += xsh_midemo.c</code></pre>
+<p>Vuelve a compilar. <code>ncommand</code> se recalcula solo porque es <code>sizeof(commandtab) / sizeof(struct centry)</code>.</p>
+<h3 id="83-añadir-un-dispositivo">8.3 Añadir un dispositivo</h3>
+<ol><li>Escribe el driver con las funciones que uses: <code>fooInit</code>, <code>fooOpen</code>,</li></ol>
+<p><code>fooClose</code>, <code>fooRead</code>, <code>fooWrite</code>, <code>fooGetc</code>, <code>fooPutc</code>, <code>fooControl</code>.</p>
+<ol><li>Declara el tipo y la instancia en <code>compile/platforms/esp32s3/xinu.conf</code>:</li></ol>
+<pre><code>foo:
+    on HARDWARE -i fooInit  -o fooOpen  -c fooClose
+                -r fooRead  -g fooGetc  -p fooPutc
+                -w fooWrite -n fooControl
+
+FOO0 is foo on HARDWARE</code></pre>
+<ol><li>Añade el directorio a <code>DEVICES</code> en <code>platformVars</code>.</li><li>No edites <code>system/conf.c</code>: es generado.</li></ol>
+<h3 id="84-añadir-un-hilo-al-arranque">8.4 Añadir un hilo al arranque</h3>
+<p><strong>Opción A: servicio de shell</strong> (lo más simple). En <code>system/boot.c</code>:</p>
+<pre><code class="lang-c">static const struct bootsvc bootsvc_tab[] = {
+    {&quot;netup&quot;, TRUE, {NULL}},
+    {&quot;telnetserver&quot;, FALSE, {&quot;-n&quot;, &quot;1&quot;, NULL}},
+    {&quot;httpd&quot;, FALSE, {&quot;80&quot;, NULL}},
+    {&quot;midemo&quot;, FALSE, {NULL}},
+    {NULL, FALSE, {NULL}}
+};</code></pre>
+<p>El segundo campo es <code>wait</code>: si es <code>TRUE</code>, el comando se ejecuta en el hilo de arranque y hay que esperar a que termine antes de lanzar el siguiente (así se hace <code>netup</code>); si es <code>FALSE</code>, se lanza en su propio hilo. Los argumentos son los mismos que escribirías en el shell. El servicio se ejecuta como si lo escribieras en el shell.</p>
+<p><strong>Opción B: hilo propio</strong> en una función de inicialización:</p>
+<pre><code class="lang-c">tid = create((void *)miHilo, INITSTK, INITPRIO, &quot;miHilo&quot;, 0);
+if (SYSERR != tid)
+{
+    ready(tid, RESCHED_NO);
+}</code></pre>
+<p>Si el hilo es un servicio permanente, ponle una prioridad adecuada y un bucle <code>while (TRUE)</code> con una espera bloqueante (mailbox, semáforo o <code>sleep</code>). <strong>Nunca</strong> un bucle que gire sin bloquear: se come la CPU y el shell no responde.</p>
+<h3 id="85-cambiar-la-configuración">8.5 Cambiar la configuración</h3>
+<p>Edita <code>compile/platforms/esp32s3/xinu.conf</code>:</p>
+<pre><code>#define NSEM      128
+#define NMON      16
+#define NMAILBOX  10
+#define NTHREAD   50
+#define NTCP      10</code></pre>
+<p><code>include/conf.h</code> y <code>system/conf.c</code> se generan desde ahí. No los edites a mano.</p>
+<h3 id="86-depurar">8.6 Depurar</h3>
+<table>
+<thead><tr><th>Comando</th><th>Qué enseña</th></tr></thead>
+<tbody>
+<tr><td><code>ps</code></td><td>Hilos, prioridad, estado</td></tr>
+<tr><td><code>sem</code></td><td>Semáforos usados, contador, si hay waiters</td></tr>
+<tr><td><code>mon</code></td><td>Monitores usados, dueño, profundidad</td></tr>
+<tr><td><code>free</code></td><td>Memoria libre (heap y PSRAM)</td></tr>
+<tr><td><code>memstat</code></td><td>Estado del heap</td></tr>
+<tr><td><code>netstat</code></td><td>Interfaces y contadores</td></tr>
+<tr><td><code>tcpstat</code></td><td>Conexiones TCP</td></tr>
+<tr><td><code>arp</code></td><td>Tabla ARP</td></tr>
+<tr><td><code>route</code></td><td>Rutas</td></tr>
+<tr><td><code>udpstat</code></td><td>Sockets UDP</td></tr>
+</tbody></table>
+<p>Para trazas temporales: <code>printf()</code> en contexto de tarea, <code>kprintf()</code> solo en arranque/inicialización (el shell y los hilos usan <code>printf</code>).</p>
+<h3 id="87-errores-típicos-de-compilación">8.7 Errores típicos de compilación</h3>
+<table>
+<thead><tr><th>Error</th><th>Causa</th></tr></thead>
+<tbody>
+<tr><td><code>undefined reference to foo</code></td><td>Falta <code>foo.c</code> en el <code>Makerules</code></td></tr>
+<tr><td><code>implicit declaration of function</code></td><td>Falta el prototipo en <code>include/</code></td></tr>
+<tr><td><code>conflicting types for &#x27;x&#x27;</code></td><td>Firma distinta entre <code>.h</code> y <code>.c</code></td></tr>
+<tr><td><code>section .iram0.text will not fit</code></td><td>Demasiado código en IRAM; mira <code>ld.script</code></td></tr>
+<tr><td><code>region dram overflowed</code></td><td>Variables globales de más; usa PSRAM o reduce buffers</td></tr>
+</tbody></table>
+<hr>
+<h2 id="9-ejercicios-guiados">9. Ejercicios guiados</h2>
+<h3 id="ejercicio-1-semdemo-semáforo-como-llave">Ejercicio 1 — <code>semdemo</code>: semáforo como llave</h3>
+<p><strong>Objetivo:</strong> ver la diferencia entre incrementar un contador con y sin semáforo.</p>
+<p>Crea un comando <code>semdemo</code> que:</p>
+<ol><li>Cree un semáforo con <code>semcreate(1)</code>.</li><li>Lance dos hilos que hagan 100 000 veces <code>contador++</code> dentro de</li></ol>
+<p><code>wait</code>/<code>signal</code>.</p>
+<ol><li>Espere a que terminen (con un semáforo de terminación) y imprima el</li></ol>
+<p>resultado.</p>
+<ol><li>Repite la prueba <strong>sin</strong> semáforo.</li></ol>
+<p><strong>Preguntas:</strong> ¿sale siempre 200 000? ¿Qué pasa si cambias <code>semcreate(1)</code> por <code>semcreate(0)</code>? ¿Y si añades un <code>signal()</code> de más?</p>
+<p><strong>Para observar:</strong> <code>sem</code> mientras corre.</p>
+<h3 id="ejercicio-2-mondemo-monitor-sobre-la-consola">Ejercicio 2 — <code>mondemo</code>: monitor sobre la consola</h3>
+<p><strong>Objetivo:</strong> ver una sección crítica que abarca varios <code>printf</code>.</p>
+<p>Crea <code>mondemo</code> con dos hilos que impriman informes de tres líneas. Hazlo primero sin monitor y luego con monitor. La salida sin monitor debe mezclarse; con monitor debe salir cada informe completo.</p>
+<p><strong>Preguntas:</strong> ¿por qué no basta con proteger cada <code>printf</code>? ¿Qué pasa si un hilo hace <code>sleep()</code> dentro del monitor? (Pruébalo y mira <code>ps</code>.)</p>
+<h3 id="ejercicio-3-mbdemo-productorconsumidor">Ejercicio 3 — <code>mbdemo</code>: productor/consumidor</h3>
+<p><strong>Objetivo:</strong> entender el bloqueo y el control de flujo.</p>
+<p>Crea <code>mbdemo</code> con:</p>
+<ul><li>una mailbox de 4 mensajes;</li><li>dos productores que envían 10 trabajos cada uno (<code>(id &lt;&lt; 8) | i</code>);</li><li>un consumidor que tarda 50 ms por trabajo;</li><li>un mensaje <code>-1</code> por cada productor para terminar.</li></ul>
+<p><strong>Preguntas:</strong> ¿cuándo se bloquean los productores? ¿Qué muestra <code>sem</code>? ¿Qué pasa si el consumidor no llama a <code>mailboxReceive</code>? ¿Y si pones capacidad 1?</p>
+<h3 id="ejercicio-4-pingtrace-instrumentar-la-pila">Ejercicio 4 — <code>pingtrace</code>: instrumentar la pila</h3>
+<p><strong>Objetivo:</strong> seguir un ping por dentro.</p>
+<p>Añade contadores globales en <code>icmpRecv</code> (requests y replies) y en <code>arpRecv</code> (requests y replies), y un comando <code>pingtrace</code> que los imprima. Lanza un ping desde el host y otro desde la placa.</p>
+<p><strong>Preguntas:</strong> ¿qué contador sube en cada caso? ¿Por qué el reply del host no pasa por <code>arpRecv</code> si la MAC ya se aprendió? ¿Qué pasa si borras la entrada ARP y vuelves a hacer ping?</p>
+<h3 id="ejercicio-5-http-con-acceptor-y-mailbox">Ejercicio 5 — HTTP con acceptor y mailbox</h3>
+<p><strong>Objetivo:</strong> aplicar el patrón de la parte 6 al pendiente real.</p>
+<p>Diseña (sin implementar todavía) un <code>httpd</code> con:</p>
+<ul><li>un hilo <strong>aceptador</strong> que hace <code>open()</code> pasivo y <code>mailboxSend(cola, tcpdev)</code>;</li><li>un hilo <strong>worker</strong> que hace <code>mailboxReceive(cola)</code> y sirve la petición;</li><li>una cola de 4.</li></ul>
+<p><strong>Criterios de aceptación:</strong></p>
+<ol><li>100 peticiones secuenciales siguen funcionando.</li><li>Dos peticiones simultáneas no reciben RST: la segunda espera en la cola.</li><li><code>free</code> no muestra hilos ni semáforos filtrados al final.</li><li>El listener no desaparece mientras se sirve.</li></ol>
+<p><strong>Pista:</strong> el worker es el único que toca la FAT, así que no necesitas otro monitor para la SD. Si la cola se llena, el aceptador se bloquea en <code>mailboxSend</code> (eso es el control de flujo).</p>
+<hr>
+<h2 id="10-caso-real-terminal-web">10. Caso real: terminal web</h2>
+<p>El dashboard tiene una pestaña <strong>Terminal</strong> que ejecuta comandos del shell desde el navegador. No es un <code>telnet</code> con otro color: el <code>httpd</code> de Xinu atiende una conexión a la vez y no puede quedarse dentro de un comando largo. Este caso reúne casi todo lo anterior: un hilo trabajador, un monitor, un semáforo, un dispositivo pseudo-TTY, memoria PSRAM y un timeout en la pila TCP.</p>
+<h3 id="101-el-problema">10.1 El problema</h3>
+<p>Si <code>httpd</code> hiciera directamente:</p>
+<pre><code class="lang-c">/* MAL: bloquea el único servidor mientras el comando corre */
+system(&quot;ping -c 10 192.168.1.1&quot;);</code></pre>
+<p>mientras el ping tarda, el navegador no puede ni consultar el estado. Además, la salida del comando iría a la consola serie, no a la página.</p>
+<p>La solución separa tres cosas:</p>
+<ol><li><strong>Aceptar</strong> el comando rápido y devolver un identificador de trabajo.</li><li><strong>Ejecutarlo</strong> en otro hilo, con su salida capturada.</li><li><strong>Consultar</strong> el estado desde el navegador con peticiones cortas.</li></ol>
+<h3 id="102-arquitectura">10.2 Arquitectura</h3>
+<pre><code>navegador
+   │  POST /api/exec  (texto del comando)
+   ▼
+httpd (prioridad 20)
+   │  webtermSubmit(): monitor jobmon, estado RUNNING
+   │  signal(jobsem)
+   ▼
+webshell (prioridad 18)  ── wait(jobsem) ──► webtermRun()
+   │                                         │
+   │  fdesc[1] = fdesc[2] = MEMTTY0          │ builtin: ejecuta en el worker
+   │                                         │ no-builtin: create() + receive()
+   ▼                                         ▼
+memtty (PSRAM, 8 KB)  ◄── printf/fprintf ── comando
+   │
+   │  GET /api/job?id=N
+   ▼
+httpd: webtermStatus() + webtermSnapshot()
+   │  202 mientras corre, 200 text/plain al terminar
+   ▼
+navegador: pinta la salida y vuelve a &quot;listo&quot;</code></pre>
+<p>Ficheros reales:</p>
+<ul><li><code>shell/webterm.c</code> — cola de un trabajo, monitor y worker.</li><li><code>include/webterm.h</code> — estados y API interna.</li><li><code>device/memtty/memtty.c</code> — dispositivo de captura.</li><li><code>shell/httpapi.c</code> — <code>POST /api/exec</code> y <code>GET /api/job</code>.</li><li><code>shell/xsh_httpd.c</code> — configura el timeout de recepción.</li><li><code>device/tcp/tcpRead.c</code> — lectura con timeout opcional.</li><li><code>web/index.html</code> — pestaña Terminal y polling.</li></ul>
+<h3 id="1021-endpoints-y-tareas">10.2.1 Endpoints y tareas</h3>
+<p>No hay un servidor aparte para la API. <code>httpdServer()</code> acepta la conexión y <code>httpApiHandle()</code> despacha por ruta y método:</p>
+<table>
+<thead><tr><th>Método y ruta</th><th>Función</th><th>Fichero:línea</th></tr></thead>
+<tbody>
+<tr><td><code>GET /</code> y ficheros de la SD</td><td><code>serve_static()</code></td><td><code>shell/xsh_httpd.c:220</code></td></tr>
+<tr><td><code>GET /api/files</code></td><td><code>api_files()</code></td><td><code>shell/httpapi.c:263</code></td></tr>
+<tr><td><code>GET /api/download</code></td><td><code>api_download()</code></td><td><code>shell/httpapi.c:313</code></td></tr>
+<tr><td><code>PUT /api/file</code></td><td><code>api_upload()</code></td><td><code>shell/httpapi.c:352</code></td></tr>
+<tr><td><code>DELETE /api/file</code></td><td><code>api_delete()</code></td><td><code>shell/httpapi.c:432</code></td></tr>
+<tr><td><code>POST /api/mkdir</code></td><td><code>api_mkdir()</code></td><td><code>shell/httpapi.c:455</code></td></tr>
+<tr><td><code>POST /api/rmdir</code></td><td><code>api_rmdir()</code></td><td><code>shell/httpapi.c:470</code></td></tr>
+<tr><td><code>POST /api/exec</code></td><td><code>api_exec()</code></td><td><code>shell/httpapi.c:485</code></td></tr>
+<tr><td><code>GET /api/job</code></td><td><code>api_job()</code></td><td><code>shell/httpapi.c:561</code></td></tr>
+<tr><td>ruta <code>/api/</code> desconocida</td><td><code>httpApiHandle()</code></td><td><code>shell/httpapi.c:593</code></td></tr>
+</tbody></table>
+<p>La cadena de tareas es:</p>
+<table>
+<thead><tr><th>Tarea</th><th>La crea</th><th>Pila</th><th>Prioridad</th></tr></thead>
+<tbody>
+<tr><td><code>MAIN</code></td><td><code>nulluser()</code> (<code>system/initialize.c:68</code>)</td><td><code>INITSTK</code> 4096 B</td><td>20</td></tr>
+<tr><td><code>BOOT1</code> / <code>BOOT2</code></td><td><code>bootServices()</code> (<code>system/boot.c:105</code>)</td><td><code>SHELL_CMDSTK</code> 4096 B</td><td>19</td></tr>
+<tr><td><code>httpd</code></td><td><code>xsh_httpd()</code> (<code>shell/xsh_httpd.c:397</code>)</td><td><code>HTTPD_STK</code> 8192 B</td><td>20</td></tr>
+<tr><td><code>webshell</code></td><td><code>webtermInit()</code> (<code>shell/webterm.c:94</code>)</td><td><code>WEBTERM_STK</code> 16384 B</td><td>18</td></tr>
+<tr><td>hijo de comando</td><td><code>webtermRun()</code> (<code>shell/webterm.c:301</code>)</td><td><code>SHELL_CMDSTK</code> 4096 B</td><td>18</td></tr>
+<tr><td><code>JVM</code></td><td><code>xsh_java()</code> (<code>shell/xsh_java.c:90</code>)</td><td><code>JVM_STK</code> 65536 B</td><td>20</td></tr>
+<tr><td><code>httpdRel</code></td><td><code>httpdRelease()</code> (<code>shell/xsh_httpd.c:279</code>)</td><td><code>INITSTK</code> 4096 B</td><td>20</td></tr>
+<tr><td><code>SHELL0</code></td><td><code>main()</code> (<code>system/main.c:85</code>)</td><td><code>INITSTK</code> 4096 B</td><td>20</td></tr>
+</tbody></table>
+<p><code>MEMTTY0</code> no es una tarea: <code>sysinit()</code> ejecuta <code>devtab[i].init()</code> (<code>system/initialize.c:156</code>), que llama a <code>memttyInit()</code> y reserva 8 KB en PSRAM. El despacho de la API está en <code>httpApiHandle()</code> (<code>shell/httpapi.c:593-648</code>) y se invoca desde <code>httpdServer()</code> (<code>shell/xsh_httpd.c:350-362</code>). Los detalles de respuesta y los límites están en <code>web/README.md</code>.</p>
+<h3 id="103-estado-del-trabajo-monitor-semáforo">10.3 Estado del trabajo: monitor + semáforo</h3>
+<p>El estado compartido es pequeño:</p>
+<pre><code class="lang-c">struct webjob
+{
+    int id;
+    volatile int state;          /* IDLE, RUNNING o DONE */
+    char cmd[WEB_CMD_MAX];       /* 160 bytes */
+};</code></pre>
+<p><code>webtermSubmit()</code> hace la transición a <code>RUNNING</code> dentro del monitor y despierta al worker:</p>
+<pre><code class="lang-c">lock(jobmon);
+if (WEB_STATE_RUNNING == job.state)
+{
+    unlock(jobmon);
+    return -1;                   /* la API responde 409 busy */
+}
+id = ++job.id;
+memcpy(job.cmd, cmd, len);
+job.cmd[len] = &#x27;\0&#x27;;
+job.state = WEB_STATE_RUNNING;
+memttyReset();
+unlock(jobmon);
+
+signal(jobsem);
+return id;</code></pre>
+<p>El worker espera fuera del monitor:</p>
+<pre><code class="lang-c">while (TRUE)
+{
+    wait(jobsem);                /* dormido hasta que hay trabajo */
+
+    lock(jobmon);
+    strlcpy(cmd, job.cmd, sizeof(cmd));
+    unlock(jobmon);
+
+    webtermRun(cmd);             /* aquí corre el comando */
+
+    lock(jobmon);
+    job.state = WEB_STATE_DONE;
+    unlock(jobmon);
+}</code></pre>
+<p><strong>Por qué los dos primitivos.</strong> El monitor protege el estado y el comando; el semáforo es solo la campana que despierta al worker. Se podría hacer todo con un semáforo, pero entonces cada lectura del estado tendría que recordar qué contadores protegen qué campos. El monitor da exclusión mutua y deja el código legible.</p>
+<p><strong>Regla práctica:</strong> nunca hacer I/O de red mientras se tiene <code>jobmon</code>. La API copia la salida a un buffer de instantánea en PSRAM, suelta el monitor y escribe el socket después. Así un cliente lento no bloquea al worker.</p>
+<h3 id="104-capturar-la-salida-sin-tocar-la-consola">10.4 Capturar la salida sin tocar la consola</h3>
+<p>Xinu guarda los descriptores por hilo:</p>
+<pre><code class="lang-c">#define stdout (thrtab[thrcurrent].fdesc[1])
+#define stderr (thrtab[thrcurrent].fdesc[2])</code></pre>
+<p><code>webtermRun()</code> los cambia solo para el hilo que ejecuta el comando:</p>
+<pre><code class="lang-c">saved0 = thrtab[thrcurrent].fdesc[0];
+saved1 = thrtab[thrcurrent].fdesc[1];
+saved2 = thrtab[thrcurrent].fdesc[2];
+thrtab[thrcurrent].fdesc[0] = DEVNULL;   /* sin entrada interactiva */
+thrtab[thrcurrent].fdesc[1] = MEMTTY0;
+thrtab[thrcurrent].fdesc[2] = MEMTTY0;</code></pre>
+<p>Para un comando no incorporado, el shell crea un hijo. <code>webtermRun()</code> copia los mismos descriptores al hijo <strong>antes</strong> de <code>ready()</code>:</p>
+<pre><code class="lang-c">child = create(commandtab[i].procedure, SHELL_CMDSTK,
+               WEBTERM_CMD_PRIO, commandtab[i].name, 2, ntok, tok);
+thrtab[child].fdesc[0] = DEVNULL;
+thrtab[child].fdesc[1] = MEMTTY0;
+thrtab[child].fdesc[2] = MEMTTY0;
+ready(child, RESCHED_YES);
+while (receive() != child)
+    ;</code></pre>
+<p><code>create()</code> inicializa los descriptores a <code>CONSOLE</code>. Por eso un comando que crea otro hilo debe copiarlos explícitamente. El caso concreto era <code>java</code>: <code>xsh_java.c</code> creaba la JVM y esta escribía en la consola serie aunque el comando se lanzara desde el terminal web. El arreglo fue copiar <code>stdin</code>/<code>stdout</code>/<code>stderr</code> del hilo actual al hijo de la JVM antes de <code>ready()</code>.</p>
+<p>El dispositivo <code>memtty</code> es deliberadamente simple:</p>
+<pre><code class="lang-c">devcall memttyPutc(device *devptr, char ch)
+{
+    if (NULL == mt_buf)
+        return SYSERR;
+    if (mt_len &lt; MEMTTY_CAP)
+        mt_buf[mt_len++] = ch;
+    else
+        mt_trunc = 1;
+    return OK;
+}</code></pre>
+<ul><li>El buffer de 8 KB se reserva en PSRAM; si no hay PSRAM, cae al heap.</li><li><code>memttyRead()</code> devuelve 0 y <code>memttyGetc()</code> devuelve <code>-1</code>: el terminal web no</li></ul>
+<p>es interactivo.</p>
+<ul><li><code>memttyReset()</code> se llama al aceptar un trabajo, antes de despertar al</li></ul>
+<p>worker. La disciplina del monitor garantiza que nadie lee mientras se escribe y nadie escribe mientras se lee.</p>
+<ul><li><code>webtermSnapshot()</code> copia a otro buffer de PSRAM y añade</li></ul>
+<p><code>[salida truncada]</code> si se superaron los 8 KB.</p>
+<p>El dispositivo se declara en <code>compile/platforms/esp32s3/xinu.conf</code>:</p>
+<pre><code>memtty:
+    on SOFTWARE -i memttyInit -o memttyOpen -c memttyClose
+                -r memttyRead -g memttyGetc -p memttyPutc
+                -w memttyWrite -n memttyControl
+
+MEMTTY0 is memtty on SOFTWARE</code></pre>
+<p><code>config</code> genera <code>system/conf.c</code> e <code>include/conf.h</code>; <code>NDEVS</code> pasa a 26 y <code>MEMTTY0</code> queda en el índice 25. El driver se añade a <code>DEVICES</code> en <code>platformVars</code> y a <code>device/memtty/Makerules</code>.</p>
+<h3 id="105-el-directorio-de-trabajo">10.5 El directorio de trabajo</h3>
+<p><code>fs_curdir</code> es global. El terminal web guarda el directorio de la sesión web, pone el suyo, ejecuta y al terminar guarda el nuevo y restaura el global:</p>
+<pre><code class="lang-c">strlcpy(saved_cwd, fs_curdir, sizeof(saved_cwd));
+strlcpy(fs_curdir, webterm_cwd, sizeof(fs_curdir));
+
+/* ... ejecutar ... */
+
+strlcpy(new_cwd, fs_curdir, sizeof(new_cwd));
+strlcpy(fs_curdir, saved_cwd, sizeof(fs_curdir));
+strlcpy(webterm_cwd, new_cwd, sizeof(webterm_cwd));</code></pre>
+<p>Así <code>cd /java</code> seguido de <code>ls</code> funciona dentro del terminal web y no cambia el directorio de la shell serie. Durante la ejecución la variable sigue siendo global: si otro hilo hace <code>cd</code> en ese instante, hay una carrera de ventana corta. Una sesión realmente aislada necesitaría un <code>struct session</code> con su propio <code>cwd</code> y pasarlo a los comandos, que hoy leen la variable global.</p>
+<h3 id="106-el-preconnect-del-navegador-y-tcp_ctrl_rcvtimeo">10.6 El preconnect del navegador y <code>TCP_CTRL_RCVTIMEO</code></h3>
+<p>Al cargar la página, Chrome puede abrir una conexión especulativa al mismo origen y no enviar nada. El <code>httpd</code> de una sola conexión la acepta y se queda en:</p>
+<pre><code class="lang-c">read(tcpdev, req + used, HTTPD_RQMAX - used);  /* bloqueado */</code></pre>
+<p>Mientras tanto, el <code>POST /api/exec</code> real recibe RST: el servidor no está escuchando. La página mostraba <code>Failed to fetch</code>.</p>
+<p>La pila TCP no tenía timeout de lectura. Se añadió:</p>
+<ul><li>campo <code>int rcvtimeo</code> en <code>struct tcb</code> (0 = bloqueo, valor en ms);</li><li>control <code>TCP_CTRL_RCVTIMEO</code> en <code>tcpControl.c</code>;</li><li>en <code>tcpRead()</code>, si <code>rcvtimeo &gt; 0</code>, se hace polling cada 10 ms:</li></ul>
+<pre><code class="lang-c">wait(tcbptr-&gt;mutex);
+while (0 == tcbptr-&gt;icount)
+{
+    check = stateCheck(tcbptr);      /* libera el mutex si hay error */
+    if (check != OK)
+        return SYSERR;
+    if (elapsed &gt;= tcbptr-&gt;rcvtimeo)
+    {
+        signal(tcbptr-&gt;mutex);
+        return TCP_ERR_READTO;
+    }
+    signal(tcbptr-&gt;mutex);
+    sleep(10);
+    elapsed += 10;
+    wait(tcbptr-&gt;mutex);
+}</code></pre>
+<p><code>httpd</code> lo activa tras el <code>open()</code> pasivo:</p>
+<pre><code class="lang-c">control(tcpdev, TCP_CTRL_RCVTIMEO, HTTPD_RCVTIMEO, 0);  /* 2000 ms */</code></pre>
+<p>La ruta normal (sin timeout) sigue usando el semáforo <code>readers</code>; telnet no cambia. El polling de 10 ms es un compromiso: no hay <code>semwait</code> con timeout en Xinu y añadirlo tocaría el núcleo de semáforos. Para un servidor de laboratorio es suficiente y mantiene el cambio local.</p>
+<p>La UI también reintenta los errores de red al hacer polling, porque el <code>httpd</code> tarda un instante en volver a crear el socket de escucha después de cerrar una conexión.</p>
+<h3 id="107-la-api-http">10.7 La API HTTP</h3>
+<p><code>POST /api/exec</code> acepta el comando en el cuerpo (<code>text/plain</code>, máximo 159 bytes) y responde:</p>
+<pre><code class="lang-json">{&quot;ok&quot;:true,&quot;id&quot;:7,&quot;state&quot;:&quot;running&quot;}</code></pre>
+<p>Si ya hay un trabajo: <code>409 Conflict</code> con <code>{&quot;ok&quot;:false,&quot;error&quot;:&quot;terminal busy&quot;}</code>.</p>
+<p><code>GET /api/job?id=7</code> usa cabeceras para el estado y el cuerpo para la salida:</p>
+<pre><code>HTTP/1.0 202 Accepted
+X-Job-State: running
+Content-Length: 0
+
+HTTP/1.0 200 OK
+Content-Type: text/plain; charset=utf-8
+X-Job-State: done
+X-Job-Truncated: 0
+Content-Length: 910
+
+TID NAME             STATE PRIO ...</code></pre>
+<p>No se envuelve la salida en JSON: así no hay que escapar 8 KB ni duplicar el buffer. La página lee <code>X-Job-State</code>, espera 300 ms y vuelve a preguntar.</p>
+<h3 id="108-límites-actuales">10.8 Límites actuales</h3>
+<ul><li><strong>Un trabajo a la vez.</strong> No hay cola; el segundo comando recibe 409.</li><li><strong>Sin cancelación.</strong> Un <code>sleep 60</code> deja el terminal ocupado hasta que</li></ul>
+<p>termine. <code>kill</code> desde la consola serie puede matar el comando, pero el estado del trabajo no se entera.</p>
+<ul><li><strong>Sin salida en vivo.</strong> La API solo entrega la salida cuando el estado es</li></ul>
+<p><code>DONE</code>. El polling muestra "ejecutando…", no las líneas parciales.</p>
+<ul><li><strong>Sin comandos interactivos.</strong> <code>telnet</code>, <code>nc</code> y <code>xmodem</code> necesitan una</li></ul>
+<p>consola real; el <code>stdin</code> del trabajo es <code>DEVNULL</code>.</p>
+<ul><li><strong>Sin redirecciones ni <code>&amp;</code>.</strong> Se rechazan antes de ejecutar.</li><li><strong><code>exit</code> rechazado.</strong> Mataría al hilo <code>webshell</code> y el terminal dejaría de</li></ul>
+<p>responder hasta reiniciar.</p>
+<ul><li><strong>Sin autenticación.</strong> Cualquiera en la LAN puede ejecutar <code>reset</code>, <code>kill</code></li></ul>
+<p>o borrar ficheros. Es una herramienta de laboratorio, no un servicio expuesto a Internet.</p>
+<h3 id="109-ejercicios-sobre-este-caso">10.9 Ejercicios sobre este caso</h3>
+<ol><li><strong>Cola de dos trabajos.</strong> Añade un mailbox de <code>struct webjob</code> y un segundo</li></ol>
+<p>buffer de salida. ¿Qué protege el monitor y qué protege el mailbox? ¿Qué pasa si el usuario consulta el trabajo 1 mientras corre el 2?</p>
+<ol><li><strong>Cancelar.</strong> Añade <code>POST /api/cancel</code> con el id. El worker debe matar al</li></ol>
+<p>hijo (o al comando incorporado) y pasar a <code>CANCELLED</code>. Piensa qué recursos pueden quedar abiertos: ficheros FAT, sockets, semáforos.</p>
+<ol><li><strong>Autenticación.</strong> Añade una cabecera <code>X-Token</code> y compárala con un token</li></ol>
+<p>guardado en la SD. ¿Dónde se valida: en <code>httpd</code>, en <code>httpApiHandle</code> o en cada endpoint? ¿Qué pasa con el terminal y con la subida de ficheros?</p>
+<ol><li><strong>Salida en vivo.</strong> Haz que <code>GET /api/job</code> copie también mientras está</li></ol>
+<p><code>RUNNING</code>. ¿Cómo evitas leer un byte a medias mientras <code>memttyPutc</code> lo escribe? ¿Basta el monitor o hace falta un buffer circular con índice de escritura?</p>
+<ol><li><strong>WebSocket.</strong> Compara el polling actual con un WebSocket + <code>xterm.js</code>.</li></ol>
+<p>¿Qué gana la UI? ¿Qué cuesta en RAM, en hilos y en complejidad de la pila TCP de Xinu?</p>
+<ol><li><strong>Sesiones.</strong> Diseña un <code>struct session</code> con <code>cwd</code> y token. ¿Cómo pasas la</li></ol>
+<p>sesión a <code>ls</code>, <code>cd</code> y <code>pwd</code> sin cambiar todos los comandos?</p>
+<h3 id="1010-pruebas-realizadas">10.10 Pruebas realizadas</h3>
+<table>
+<thead><tr><th>Prueba</th><th>Resultado</th></tr></thead>
+<tbody>
+<tr><td><code>POST /api/exec</code> + polling con <code>ps</code></td><td>200, salida completa de 910 B</td></tr>
+<tr><td><code>free</code></td><td>200, heap libre ≈ 51.9 KB, sin truncar</td></tr>
+<tr><td><code>java StrBuild</code></td><td>200, salida de la JVM capturada</td></tr>
+<tr><td><code>ping -c 2 192.168.1.1</code></td><td>200, salida del ping capturada</td></tr>
+<tr><td><code>cd /java</code>, <code>pwd</code>, <code>ls</code></td><td>El <code>cd</code> persiste en el terminal web; la shell serie no cambia</td></tr>
+<tr><td><code>exit</code></td><td>Rechazado con mensaje; el worker sigue vivo</td></tr>
+<tr><td>Comando inexistente</td><td><code>command not found</code> capturado</td></tr>
+<tr><td>Segundo comando mientras corre <code>sleep 3</code></td><td><code>409 terminal busy</code></td></tr>
+<tr><td>Socket idle contra el puerto 80</td><td>Se libera a los 2 s; la siguiente petición responde 200</td></tr>
+<tr><td>UI real en Chrome headless</td><td><code>ps</code>, <code>free</code> y <code>java StrBuild</code> seguidos; estado <code>listo</code></td></tr>
+</tbody></table>
+<hr>
+<h2 id="apéndice-a-api-de-bolsillo">Apéndice A. API de bolsillo</h2>
+<h3 id="semáforos">Semáforos</h3>
+<pre><code class="lang-c">semaphore semcreate(int count);      /* SYSERR si no hay slots o count &lt; 0 */
+syscall   wait(semaphore s);         /* OK / SYSERR                        */
+syscall   signal(semaphore s);       /* OK / SYSERR                        */
+syscall   signaln(semaphore s, int n);
+syscall   semcount(semaphore s);     /* contador (puede ser negativo)      */
+syscall   semfree(semaphore s);</code></pre>
+<h3 id="monitores">Monitores</h3>
+<pre><code class="lang-c">monitor moncreate(void);             /* SYSERR si no hay slots */
+syscall lock(monitor m);
+syscall unlock(monitor m);
+syscall moncount(monitor m);         /* profundidad, 0 si libre */
+syscall monfree(monitor m);</code></pre>
+<h3 id="mailboxes">Mailboxes</h3>
+<pre><code class="lang-c">mailbox mailboxAlloc(uint count);
+syscall mailboxSend(mailbox b, int msg);
+syscall mailboxReceive(mailbox b);
+syscall mailboxCount(mailbox b);
+syscall mailboxFree(mailbox b);</code></pre>
+<h3 id="mensajes-de-hilo">Mensajes de hilo</h3>
+<pre><code class="lang-c">syscall send(tid_typ tid, message msg);
+message receive(void);
+message recvclr(void);
+message recvtime(int ticks);          /* TIMEOUT si expira */</code></pre>
+<h3 id="hilos">Hilos</h3>
+<pre><code class="lang-c">tid_typ create(void *fn, uint stk, int prio,
+               const char *name, int nargs, ...);
+int     ready(tid_typ tid, bool resched);
+syscall sleep(uint ms);
+syscall yield(void);
+syscall kill(int tid);
+tid_typ gettid(void);
+syscall getprio(tid_typ tid);
+syscall chprio(tid_typ tid, int prio);   /* system/chprio.c; añade el
+                                            prototipo a thread.h si lo usas */</code></pre>
+<h3 id="memoria">Memoria</h3>
+<pre><code class="lang-c">void *memget(uintptr_t n);
+syscall memfree(void *p, uintptr_t n);
+void *psram_memget(uintptr_t n);
+syscall psram_memfree(void *p, uintptr_t n);
+void *stkget(uintptr_t n);
+syscall stkfree(void *p, uintptr_t n);</code></pre>
+<hr>
+<h2 id="apéndice-b-constantes">Apéndice B. Constantes</h2>
+<table>
+<thead><tr><th>Constante</th><th>Valor</th><th>Dónde</th></tr></thead>
+<tbody>
+<tr><td><code>NTHREAD</code></td><td>50</td><td><code>xinu.conf</code></td></tr>
+<tr><td><code>NSEM</code></td><td>128</td><td><code>xinu.conf</code></td></tr>
+<tr><td><code>NMON</code></td><td>16</td><td><code>xinu.conf</code></td></tr>
+<tr><td><code>NMAILBOX</code></td><td>10</td><td><code>xinu.conf</code></td></tr>
+<tr><td><code>NPOOL</code></td><td>8</td><td><code>xinu.conf</code></td></tr>
+<tr><td><code>INITSTK</code></td><td>4096</td><td><code>include/thread.h</code></td></tr>
+<tr><td><code>MINSTK</code></td><td>128</td><td><code>include/thread.h</code></td></tr>
+<tr><td><code>INITPRIO</code></td><td>20</td><td><code>include/thread.h</code></td></tr>
+<tr><td><code>NET_THR_PRIO</code></td><td>30</td><td><code>include/network.h</code></td></tr>
+<tr><td><code>CLKTICKS_PER_SEC</code></td><td>1000</td><td><code>include/clock.h</code></td></tr>
+<tr><td><code>NET_MAX_PKTLEN</code></td><td>1598</td><td><code>include/network.h</code></td></tr>
+<tr><td><code>NET_POOLSIZE</code></td><td>24</td><td><code>include/network.h</code></td></tr>
+<tr><td><code>TNMLEN</code></td><td>16</td><td><code>include/thread.h</code></td></tr>
+</tbody></table>
+<p>Prioridad: <strong>número mayor = más prioridad</strong>. <code>NET_THR_PRIO</code> (30) corre por encima de <code>INITPRIO</code> (20, el shell).</p>
+<hr>
+<h2 id="apéndice-c-glosario">Apéndice C. Glosario</h2>
+<ul><li><strong>Hilo (thread):</strong> unidad de ejecución con pila propia. En Xinu no hay</li></ul>
+<p>procesos con memoria separada: todos comparten el espacio de direcciones.</p>
+<ul><li><strong>TID:</strong> índice en <code>thrtab[]</code>.</li><li><strong>Sección crítica:</strong> código que no debe ejecutarse a la vez que otro.</li><li><strong>Mutex:</strong> exclusión mutua (una llave).</li><li><strong>Semáforo:</strong> contador + cola de espera. <code>wait</code>/<code>signal</code>.</li><li><strong>Monitor:</strong> mutex con dueño y recursión. <code>lock</code>/<code>unlock</code>.</li><li><strong>Mailbox:</strong> cola acotada de <code>int</code> con dos semáforos. Sin destinatario.</li><li><strong>Mensaje de hilo:</strong> un <code>int</code> en el slot de un <code>tid</code> concreto.</li><li><strong>Backpressure:</strong> cuando la cola se llena, el productor se bloquea.</li><li><strong>Inversión de prioridad:</strong> un hilo de prioridad alta espera a uno de</li></ul>
+<p>prioridad baja que, a su vez, es adelantado por uno de prioridad media. Xinu no tiene herencia de prioridad.</p>
+<ul><li><strong>ISR:</strong> manejador de interrupción. No puede dormir.</li><li><strong>PSRAM:</strong> memoria externa del ESP32-S3, usada para pilas y buffers grandes.</li><li><strong>MACRAW:</strong> modo del W5500 en el que entrega tramas Ethernet crudas; no hace</li></ul>
+<p>IP/TCP.</p>
+<hr>
+<p><em>Fin del manual. Si algo no cuadra con el código, gana el código: este documento está pensado para leerse con <code>system/</code>, <code>network/</code> y <code>device/</code> abiertos al lado.</em></p>
+</main>
+</body>
+</html>

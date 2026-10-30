@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Xinu ESP32-S3 - Documentacion completa</title>
+<style>
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#0b1220;color:#e6edf3;line-height:1.6;}
+nav{position:fixed;left:0;top:0;width:280px;height:100vh;overflow:auto;background:#111827;padding:16px;border-right:1px solid #1f2937;}
+nav h2{font-size:14px;color:#93c5fd;margin:12px 0 6px;}
+nav a{display:block;color:#cbd5e1;text-decoration:none;font-size:13px;padding:3px 6px;border-radius:4px;}
+nav a:hover{background:#1f2937;color:#fff;}
+main{margin-left:300px;padding:32px 48px;max-width:1100px;}
+h1{color:#93c5fd;border-bottom:2px solid #1f2937;padding-bottom:8px;}
+h2{color:#60a5fa;margin-top:40px;border-bottom:1px solid #1f2937;padding-bottom:4px;}
+h3{color:#93c5fd;margin-top:24px;}
+code,pre{background:#1e293b;color:#e2e8f0;border-radius:6px;}
+pre{padding:12px;overflow:auto;font-size:13px;}
+code{padding:2px 5px;}
+table{border-collapse:collapse;width:100%;margin:12px 0;}
+th,td{border:1px solid #334155;padding:8px;text-align:left;font-size:13px;}
+th{background:#1e293b;}
+.warn{background:#422006;border-left:4px solid #f59e0b;padding:10px;margin:12px 0;border-radius:4px;}
+.note{background:#0c2d48;border-left:4px solid #38bdf8;padding:10px;margin:12px 0;border-radius:4px;}
+ul{padding-left:20px;}
+a{color:#60a5fa;}
+</style>
+</head>
+<body>
+<nav>
+<h2>Indice</h2>
+<a href="#overview">Vision general</a>
+<a href="#hardware">Hardware ESP32-S3</a>
+<a href="#build">Compilar y flashear</a>
+<a href="#buildsystem">Sistema de build</a>
+<a href="#addc">Agregar un .c nuevo</a>
+<a href="#makefile">Modificar el Makefile</a>
+<a href="#ldscript">Linker script (ld.script)</a>
+<a href="#conf">Configuracion (conf.h / xinu.conf)</a>
+<a href="#devices">Modelo de devices</a>
+<a href="#newdevice">Agregar un device nuevo</a>
+<a href="#kernel">Nucleo del kernel</a>
+<a href="#system">system/ en detalle</a>
+<a href="#shell">Shell</a>
+<a href="#shellcmds">Comandos de la shell</a>
+<a href="#fs">Sistema de archivos</a>
+<a href="#network">Red (capas)</a>
+<a href="#tft">TFT / display</a>
+<a href="#memory">Memoria</a>
+<a href="#jvm">JVM Simple</a>
+<a href="#sdk">SDK y librerias Java</a>
+<a href="#apps">Apps Java</a>
+<a href="#natives">Crear natives</a>
+<a href="#web">Web / file manager / terminal</a>
+<a href="#upload">Subir ficheros a la SD</a>
+<a href="#troubleshoot">Problemas comunes</a>
+<a href="#quickref">Referencia rapida</a>
+<a href="index.html">← Volver al dashboard</a>
+</nav>
+<main>
+
+<h1>Xinu ESP32-S3 - Documentacion completa del proyecto</h1>
+<p>Este documento cubre todo el proyecto: hardware, compilacion, kernel, dispositivos, red, sistema de archivos, JVM, aplicaciones Java, interfaz web y como extenderlo.</p>
+
+<h2 id="overview">Vision general</h2>
+<p>Embedded Xinu es un sistema operativo pequeno y didactico. Esta portacion corre sobre ESP32-S3 y anade:</p>
+<ul>
+<li>Driver de SD (SPI) + sistema de archivos FAT.</li>
+<li>Red por W5500 (Ethernet) con pila TCP/UDP completa.</li>
+<li>Pantalla TFT ST7735.</li>
+<li>LED RGB discreto.</li>
+<li>Boton.</li>
+<li>Una JVM "Simple" que ejecuta clases Java compiladas, con librerias nativas para HW, IO, FAT, Sys, LVGL, Net y RGB.</li>
+<li>Servidor HTTP en el puerto 80 con gestor de archivos y terminal web.</li>
+<li>Servidor Telnet.</li>
+</ul>
+<p>El kernel se ejecuta desde IRAM interna (128 KiB). El heap y las pilas viven en SRAM interna de datos (192 KiB). La PSRAM externa (8 MiB) se usa para buffers grandes, pilas de red y heap de la JVM.</p>
+
+<h2 id="hardware">Hardware ESP32-S3</h2>
+<table>
+<tr><th>Elemento</th><th>Detalle</th></tr>
+<tr><td>MCU</td><td>ESP32-S3 (Xtensa LX7, CALL0 ABI)</td></tr>
+<tr><td>SRAM interna</td><td>~512 KB (IRAM 128 KB + DRAM 192 KB usados por este port)</td></tr>
+<tr><td>PSRAM externa</td><td>8 MiB mapeada en 0x3C000000</td></tr>
+<tr><td>SD</td><td>SPI, montada como FAT</td></tr>
+<tr><td>Ethernet</td><td>W5500 (SPI)</td></tr>
+<tr><td>Display</td><td>TFT ST7735 (SPI, solo escritura)</td></tr>
+<tr><td>RGB LED</td><td>Discreto, GPIO 2/4/6, catodo comun, activo alto</td></tr>
+<tr><td>Boton</td><td>GPIO configurable en board.h</td></tr>
+<tr><td>Consola serie</td><td>UART0 a 115200 baudios</td></tr>
+</table>
+<p>Los pines estan centralizados en <code>include/board.h</code> (<code>BOARD_RGB_R_PIN</code>, <code>BOARD_W5500_*_PIN</code>, etc.).</p>
+
+<h2 id="build">Compilar y flashear</h2>
+<h3>Requisitos</h3>
+<ul>
+<li>Toolchain Xtensa ESP32-S3 (<code>xtensa-esp-elf-gcc</code>).</li>
+<li><code>esptool</code> para flashear.</li>
+<li>Python 3 con <code>pyserial</code>.</li>
+<li>JDK para compilar las apps Java.</li>
+</ul>
+<h3>Compilar el kernel</h3>
+<pre>
+cd /home/daniel/s3-xinu/compile
+source ../env.sh
+make PLATFORM=esp32s3 -j4
+</pre>
+<p>Genera <code>compile/xinu.boot</code>.</p>
+<h3>Flashear</h3>
+<pre>
+esptool --chip esp32s3 --port /dev/ttyUSB0 --baud 460800 \
+  write-flash --flash-mode dio --flash-freq 80m --flash-size 8MB \
+  0x0 xinu.boot
+</pre>
+<h3>Compilar las apps Java</h3>
+<pre>
+cd /home/daniel/s3-xinu/jvm
+./build-examples.sh
+</pre>
+<p>Las clases quedan en <code>jvm/dist/java/</code> (apps) y <code>jvm/dist/java/esp32p4/</code> (librerias nativas).</p>
+
+<h2 id="buildsystem">Sistema de build</h2>
+<p>El build se controla desde <code>compile/Makefile</code> y <code>compile/platforms/esp32s3/</code>.</p>
+<ul>
+<li><code>platformVars</code>: define <code>APPCOMPS := shell apps mailbox network fs</code> y <code>DEVICES := tty uart-esp32s3 w5500 raw udp tcp telnet sd tft button rgb jvm memtty</code>.</li>
+<li><code>Makefile</code>: si <code>shell</code> esta en <code>APPCOMPS</code>, define <code>-DHAVE_SHELL=1</code>.</li>
+<li>Cada directorio tiene su propio <code>Makerules</code> que lista los <code>.c</code> a compilar.</li>
+<li>Para anadir un nuevo <code>.c</code>: anadirlo a <code>C_FILES</code> del <code>Makerules</code> correspondiente y recompilar.</li>
+<li>Para anadir un comando de shell: anadir <code>xsh_foo.c</code> a <code>shell/Makerules</code>, declararlo en <code>include/shell.h</code> y registrarlo en <code>shell/shell.c</code> dentro de <code>commandtab[]</code>.</li>
+</ul>
+
+<h2 id="addc">Agregar un nuevo .c</h2>
+<ol>
+<li>Crear el fichero en el directorio adecuado, por ejemplo <code>system/mi_modulo.c</code>.</li>
+<li>Anadirlo a <code>C_FILES</code> en <code>system/Makerules</code>.</li>
+<li>Si es un driver, anadirlo tambien a <code>DEVICES</code> en <code>platformVars</code> y declarar el dispositivo en <code>xinu.conf</code>.</li>
+<li>Recompilar: <code>make PLATFORM=esp32s3 -j4</code>.</li>
+</ol>
+<p>Ejemplo de <code>Makerules</code>:</p>
+<pre>
+C_FILES += memget.c memfree.c stkget.c ... mi_modulo.c
+</pre>
+
+<h2 id="makefile">Modificar el Makefile</h2>
+<p>El <code>Makefile</code> principal incluye <code>platforms/$(PLATFORM)/platformVars</code>. Los cambios mas comunes:</p>
+<ul>
+<li><strong>Anadir un componente</strong>: modificar <code>APPCOMPS</code> en <code>platformVars</code> (por ejemplo, anadir <code>test</code>).</li>
+<li><strong>Anadir un driver</strong>: modificar <code>DEVICES</code> en <code>platformVars</code>.</li>
+<li><strong>Cambiar flags de compilacion</strong>: editar <code>CFLAGS</code> en <code>platformVars</code> o en el <code>Makefile</code>.</li>
+<li><strong>Cambiar el linker script</strong>: editar <code>compile/platforms/esp32s3/ld.script</code>.</li>
+</ul>
+<p>El <code>Makefile</code> tambien define <code>HAVE_SHELL</code> y <code>HAVE_TESTSUITE</code> automaticamente segun <code>APPCOMPS</code>.</p>
+
+<h2 id="ldscript">Linker script (ld.script)</h2>
+<p>El ESP32-S3 ejecuta el kernel desde IRAM interna. El script esta en:</p>
+<pre>compile/platforms/esp32s3/ld.script</pre>
+<p>Valores actuales:</p>
+<pre>
+iram (rwx) : ORIGIN = 0x40378000, LENGTH = 0x20000   /* 128 KiB */
+dram (rwx) : ORIGIN = 0x3FCA8000, LENGTH = 0x28000   /* 160 KiB */
+</pre>
+<p>Si el enlazador dice <code>region iram overflowed by N bytes</code>, hay que liberar codigo: quitar comandos de shell, simplificar funciones o mover codigo fuera de IRAM. No se puede ampliar a 140 KiB porque la ROM carga mas bytes de los que admite.</p>
+
+<h2 id="conf">Configuracion (conf.h / xinu.conf)</h2>
+<p><code>include/conf.h</code> es un fichero generado. No se edita a mano. Se genera desde:</p>
+<pre>compile/platforms/esp32s3/xinu.conf</pre>
+<p>con <code>compile/config/config</code>. Define los numeros de dispositivo, los contadores (<code>NTFT</code>, <code>NSD</code>, etc.) y constantes de tamanio (<code>NTHREAD</code>, <code>NSEM</code>, etc.).</p>
+<p><code>NETHER</code> se define manualmente en <code>xinu.conf</code> porque el chip es W5500, no "ether".</p>
+
+<h2 id="devices">Modelo de devices</h2>
+<p>Cada dispositivo se declara en <code>xinu.conf</code> con su tipo. El kernel mantiene una tabla <code>devtab[]</code> con punteros a funciones <code>init/open/close/read/write/seek/getc/putc/control</code>. El usuario abre un dispositivo con:</p>
+<pre>int dev = open(TFT0);   /* o open(CONSOLE, SERIAL0) */</pre>
+<p>Y lo usa con las funciones estandar:</p>
+<pre>
+control(dev, TFT_CTRL_CLEAR, TFT_BLACK, 0);
+write(dev, "hola", 4);
+</pre>
+
+<h2 id="newdevice">Agregar un device nuevo</h2>
+<ol>
+<li>Declararlo en <code>xinu.conf</code>: <code>MI0 is mi on HARDWARE</code>.</li>
+<li>Anadir el tipo de driver en <code>DEVICES</code> de <code>platformVars</code>.</li>
+<li>Implementar el driver en <code>device/mi/</code> con <code>miInit</code>, <code>miOpen</code>, <code>miRead</code>, etc.</li>
+<li>Anadir el directorio a <code>device/Makerules</code>.</li>
+<li>Recompilar.</li>
+</ol>
+
+<h2 id="kernel">Nucleo del kernel</h2>
+<p>Directorio <code>system/</code>:</p>
+<table>
+<tr><th>Fichero</th><th>Funcion</th></tr>
+<tr><td><code>main.c</code></td><td>Punto de entrada: abre consola, TFT, red, arranca servicios, crea el shell serie.</td></tr>
+<tr><td><code>conf.c</code></td><td>Tabla de dispositivos y configuracion generada.</td></tr>
+<tr><td><code>kernel.c</code></td><td>Inicializacion del kernel, memoria, interrupciones.</td></tr>
+<tr><td><code>memory.c</code></td><td>Allocator del heap del kernel (<code>memget</code>/<code>memfree</code>).</td></tr>
+<tr><td><code>thread.c</code></td><td>Hilos, scheduler, prioridades.</td></tr>
+<tr><td><code>semaphore.c</code></td><td>Semaforos.</td></tr>
+<tr><td><code>monitor.c</code></td><td>Monitores.</td></tr>
+<tr><td><code>clock.c</code></td><td>Reloj del sistema.</td></tr>
+<tr><td><code>psram*.c</code></td><td>Gestion de la PSRAM externa.</td></tr>
+</table>
+<p>Directorio <code>device/</code> contiene un subdirectorio por driver: <code>uart-esp32s3/</code>, <code>w5500/</code>, <code>sd/</code>, <code>tft/</code>, <code>rgb/</code>, <code>button/</code>, <code>tcp/</code>, <code>telnet/</code>, <code>jvm/</code>, <code>memtty/</code>.</p>
+
+<h2 id="system">system/ en detalle</h2>
+<p>Los ficheros mas importantes de <code>system/</code>:</p>
+<ul>
+<li><code>main.c</code>: inicializa la consola, la pantalla, la red y arranca los servicios. Crea el shell serie.</li>
+<li><code>kernel.c</code>: inicializa el kernel, la memoria y las interrupciones.</li>
+<li><code>thread.c</code>: implementa hilos, el scheduler y el cambio de contexto.</li>
+<li><code>memory.c</code>: allocator del heap del kernel (<code>memget</code>/<code>memfree</code>).</li>
+<li><code>semaphore.c</code> / <code>monitor.c</code>: sincronizacion.</li>
+<li><code>clock.c</code>: temporizador del sistema.</li>
+<li><code>psram.c</code> / <code>psramInit.c</code>: gestion de la PSRAM externa.</li>
+<li><code>xmalloc.c</code>: allocator que usa PSRAM primero y heap interno como respaldo.</li>
+</ul>
+
+<h2 id="shell">Shell</h2>
+<p>La shell es un hilo que lee de un dispositivo de entrada y escribe en uno de salida. Se registra en <code>shell/shell.c</code> dentro de <code>commandtab[]</code>. Cada comando es una funcion <code>shellcmd xsh_foo(int nargs, char *args[])</code>.</p>
+<h3>Comandos principales</h3>
+<table>
+<tr><th>Grupo</th><th>Comandos</th></tr>
+<tr><td>Archivos</td><td>ls, cd, pwd, cat, cp, mv, rm, mkdir, rmdir, head, tail, stat, hexdump, echo, df, du</td></tr>
+<tr><td>Procesos</td><td>ps, kill, free, mem, memdump, psram</td></tr>
+<tr><td>Red</td><td>ifconfig, ip, netup, netdown, ping, arp, dns, route, tcpstat, udpstat, curl, wget, httpd, telnet, telnetserver, xmodem</td></tr>
+<tr><td>SD / FAT</td><td>fat, sd</td></tr>
+<tr><td>TFT</td><td>tft, gpio, button</td></tr>
+<tr><td>JVM</td><td>java</td></tr>
+<tr><td>Otros</td><td>date, clear, help, config, exit</td></tr>
+</table>
+<h3>Limitaciones y ventajas</h3>
+<ul>
+<li>Ventaja: todos los comandos estan disponibles desde serie, Telnet y web terminal.</li>
+<li>Limitacion: la shell es monohilo por consola. Un comando bloqueante (como <code>java ColorShow</code>) impide usar esa consola hasta que termine o se mate el hilo.</li>
+<li>Los comandos de red dependen de que <code>netup</code> se haya ejecutado antes.</li>
+<li><code>mem</code> muestra el uso de memoria; <code>free</code> es mas detallado (heap, pilas, pools, PSRAM).</li>
+</ul>
+
+<h2 id="shellcmds">Comandos de la shell (detalle)</h2>
+<table>
+<tr><th>Comando</th><th>Uso</th><th>Descripcion</th></tr>
+<tr><td>ls</td><td>ls [dir]</td><td>Lista ficheros de un directorio.</td></tr>
+<tr><td>cd</td><td>cd &lt;dir&gt;</td><td>Cambia de directorio.</td></tr>
+<tr><td>pwd</td><td>pwd</td><td>Muestra el directorio actual.</td></tr>
+<tr><td>cat</td><td>cat &lt;fichero&gt;</td><td>Muestra el contenido de un fichero.</td></tr>
+<tr><td>cp</td><td>cp &lt;origen&gt; &lt;destino&gt;</td><td>Copia un fichero.</td></tr>
+<tr><td>mv</td><td>mv &lt;origen&gt; &lt;destino&gt;</td><td>Mueve o renombra un fichero.</td></tr>
+<tr><td>rm</td><td>rm &lt;fichero&gt;</td><td>Borra un fichero.</td></tr>
+<tr><td>mkdir</td><td>mkdir &lt;dir&gt;</td><td>Crea un directorio.</td></tr>
+<tr><td>rmdir</td><td>rmdir &lt;dir&gt;</td><td>Borra un directorio vacio.</td></tr>
+<tr><td>head</td><td>head &lt;fichero&gt;</td><td>Muestra las primeras lineas.</td></tr>
+<tr><td>tail</td><td>tail &lt;fichero&gt;</td><td>Muestra las ultimas lineas.</td></tr>
+<tr><td>stat</td><td>stat &lt;fichero&gt;</td><td>Muestra informacion de un fichero.</td></tr>
+<tr><td>hexdump</td><td>hexdump &lt;fichero&gt;</td><td>Vuelca en hexadecimal.</td></tr>
+<tr><td>echo</td><td>echo &lt;texto&gt;</td><td>Imprime texto.</td></tr>
+<tr><td>df</td><td>df</td><td>Muestra espacio libre en la SD.</td></tr>
+<tr><td>du</td><td>du &lt;dir&gt;</td><td>Muestra uso de disco.</td></tr>
+<tr><td>ps</td><td>ps</td><td>Lista los hilos en ejecucion.</td></tr>
+<tr><td>kill</td><td>kill &lt;TID&gt;</td><td>Mata un hilo.</td></tr>
+<tr><td>free</td><td>free [-v]</td><td>Muestra uso de memoria detallado.</td></tr>
+<tr><td>mem</td><td>mem [-k] [-q] [-t TID]</td><td>Muestra uso de memoria.</td></tr>
+<tr><td>memdump</td><td>memdump</td><td>Vuelca la memoria.</td></tr>
+<tr><td>psram</td><td>psram [-t]</td><td>Muestra estado de la PSRAM.</td></tr>
+<tr><td>ifconfig</td><td>ifconfig</td><td>Muestra configuracion de red.</td></tr>
+<tr><td>ip</td><td>ip</td><td>Muestra la IP.</td></tr>
+<tr><td>netup</td><td>netup [dev [ip mask gw]]</td><td>Levanta la red (DHCP por defecto).</td></tr>
+<tr><td>netdown</td><td>netdown</td><td>Baja la red.</td></tr>
+<tr><td>ping</td><td>ping &lt;host&gt;</td><td>Hace ping a un host.</td></tr>
+<tr><td>arp</td><td>arp</td><td>Muestra la tabla ARP.</td></tr>
+<tr><td>dns</td><td>dns &lt;host&gt;</td><td>Resuelve un nombre.</td></tr>
+<tr><td>route</td><td>route</td><td>Muestra la tabla de rutas.</td></tr>
+<tr><td>tcpstat</td><td>tcpstat</td><td>Estadisticas TCP.</td></tr>
+<tr><td>udpstat</td><td>udpstat</td><td>Estadisticas UDP.</td></tr>
+<tr><td>curl</td><td>curl &lt;url&gt;</td><td>Descarga una URL.</td></tr>
+<tr><td>wget</td><td>wget &lt;url&gt; [fichero]</td><td>Descarga un fichero por HTTP.</td></tr>
+<tr><td>httpd</td><td>httpd [port]</td><td>Inicia el servidor HTTP.</td></tr>
+<tr><td>telnet</td><td>telnet &lt;host&gt;</td><td>Cliente Telnet.</td></tr>
+<tr><td>telnetserver</td><td>telnetserver [-d dev] [-p port] [-n count]</td><td>Inicia servidor Telnet.</td></tr>
+<tr><td>xmodem</td><td>xmodem recv &lt;fichero&gt;</td><td>Recepcion por XMODEM.</td></tr>
+<tr><td>fat</td><td>fat</td><td>Informacion del volumen FAT.</td></tr>
+<tr><td>sd</td><td>sd</td><td>Informacion de la SD.</td></tr>
+<tr><td>tft</td><td>tft</td><td>Comandos de la pantalla.</td></tr>
+<tr><td>gpio</td><td>gpio</td><td>Control de GPIO.</td></tr>
+<tr><td>button</td><td>button</td><td>Lee el boton.</td></tr>
+<tr><td>java</td><td>java &lt;Clase&gt; [args]</td><td>Ejecuta una clase Java.</td></tr>
+<tr><td>date</td><td>date</td><td>Muestra la fecha.</td></tr>
+<tr><td>clear</td><td>clear</td><td>Limpia la pantalla.</td></tr>
+<tr><td>help</td><td>help [comando]</td><td>Muestra ayuda.</td></tr>
+<tr><td>config</td><td>config</td><td>Muestra la configuracion.</td></tr>
+<tr><td>exit</td><td>exit</td><td>Sale de la shell.</td></tr>
+</table>
+
+<h2 id="fs">Sistema de archivos</h2>
+<p>Se usa FAT sobre la SD. El driver esta en <code>device/sd/</code> y la libreria FAT en <code>fs/</code>. Se monta automaticamente al abrir <code>SD0</code>. Comandos clave: <code>fat</code>, <code>ls</code>, <code>cd</code>, <code>pwd</code>, <code>cat</code>, <code>cp</code>, <code>mv</code>, <code>rm</code>, <code>mkdir</code>, <code>rmdir</code>, <code>head</code>, <code>tail</code>, <code>stat</code>, <code>hexdump</code>, <code>echo</code>, <code>df</code>, <code>du</code>, <code>xmodem</code>.</p>
+<p>Las rutas usan <code>full_path()</code> (definido en <code>xsh_fs.h</code>) para resolver rutas relativas.</p>
+
+<h2 id="network">Red</h2>
+<p>La red tiene varias capas:</p>
+<ol>
+<li><strong>W5500</strong> (<code>device/w5500/</code>): driver SPI del chip Ethernet. Expone <code>ETH0</code>.</li>
+<li><strong>Ethernet</strong> (<code>network/ether/</code>): tramas Ethernet.</li>
+<li><strong>ARP</strong> (<code>network/arp/</code>): resolucion de direcciones.</li>
+<li><strong>IP</strong> (<code>network/ip/</code>): capa de red.</li>
+<li><strong>UDP</strong> (<code>network/udp/</code>): datagramas.</li>
+<li><strong>TCP</strong> (<code>device/tcp/</code>): conexiones fiables (buffer de 1024 B).</li>
+<li><strong>DHCP</strong> (<code>network/dhcpc/</code>): configuracion automatica.</li>
+<li><strong>DNS</strong>, <strong>HTTP</strong>, <strong>Telnet</strong>: servicios de aplicacion.</li>
+</ol>
+<p>El arranque de red se hace en <code>main.c</code> con <code>xsh_netup(1, {"netup", NULL})</code>, que por defecto usa <code>ETH0</code> y DHCP. Luego se arrancan <code>telnetserver</code> y <code>httpd</code>.</p>
+<p>Nota importante: el buffer TCP es de 1024 bytes. La ventana inicial anunciada al peer debe ser igual o menor que ese buffer; de lo contrario el peer envia mas datos de los que caben y se corrompe el buffer. Por eso <code>TCP_INIT_WND</code> se define como <code>TCP_IBLEN</code> en <code>include/tcp.h</code>.</p>
+
+<h2 id="tft">TFT / display</h2>
+<p>El display ST7735 se controla por el descriptor <code>TFT0</code> con las funciones estandar:</p>
+<pre>
+control(TFT0, TFT_CTRL_CLEAR, TFT_BLACK, 0);
+control(TFT0, TFT_CTRL_COLORS, TFT_WHITE, TFT_BLACK);
+control(TFT0, TFT_CTRL_CURSOR, 4, 4);
+write(TFT0, "Xinu ESP32-S3", 13);
+</pre>
+<p>El driver esta en <code>device/tft/</code>. La pantalla es de solo escritura (<code>tftRead</code> y <code>tftGetc</code> devuelven <code>SYSERR</code>).</p>
+
+<h2 id="memory">Memoria</h2>
+<table>
+<tr><th>Zona</th><th>Total</th><th>Libre</th></tr>
+<tr><td>SRAM interna (data window)</td><td>196.608 B (192 KB)</td><td>~52.696 B (heap)</td></tr>
+<tr><td>IRAM (codigo)</td><td>131.072 B (128 KB)</td><td>~600 B</td></tr>
+<tr><td>PSRAM externa</td><td>8.388.608 B (8 MB)</td><td>~8.283.840 B</td></tr>
+</table>
+<p>El comando <code>mem</code> muestra el resumen; <code>free</code> es mas detallado. El heap del kernel esta en SRAM interna; la PSRAM se usa para buffers grandes y pilas de red.</p>
+
+<h2 id="jvm">JVM Simple</h2>
+<p>El proyecto incluye una JVM pequena ("Simple JVM") que ejecuta clases Java compiladas. El core esta en <code>jvm/</code> (compartido con el build de host) y la adaptacion para el target en <code>device/jvm/</code>.</p>
+<ul>
+<li>Soporta los bytecodes basicos y las extensiones del proyecto avanzado (0x78-0x82: ishl, ishr, iushr, etc.).</li>
+<li>Las librerias nativas estan en <code>jvm/lib/esp32p4/</code> (HW, IO, FAT, Sys, LVGL, Net, RGB).</li>
+<li>Las apps estan en <code>apps/java/</code>.</li>
+<li>El comando <code>java &lt;Clase&gt;</code> carga y ejecuta la clase desde <code>/java</code> en la SD.</li>
+</ul>
+<p>Para compilar las apps: <code>cd jvm && ./build-examples.sh</code>. Las clases quedan en <code>jvm/dist/java/</code>.</p>
+
+<h2 id="sdk">SDK y librerias Java</h2>
+<p>Las librerias Java estan en <code>jvm/lib/esp32p4/</code>. Cada una declara metodos <code>native</code> que se vinculan con funciones C en <code>device/jvm/native_*.c</code>.</p>
+<p>Ejemplo: <code>RGB.java</code> declara:</p>
+<pre>
+public static native void set(int r, int g, int b);
+public static native void off();
+public static native int get();
+</pre>
+<p>Y en <code>device/jvm/native_hw.c</code> estan las implementaciones <code>esp32p4_rgb_set</code>, etc., registradas en <code>jvm/java_lib.c</code>.</p>
+
+<h2 id="apps">Apps Java</h2>
+<p>Las apps estan en <code>apps/java/</code>. Cada una tiene su propio <code>Makefile</code>. Las apps principales:</p>
+<ul>
+<li><strong>ColorShow</strong>: demo del LED RGB (bucle infinito).</li>
+<li><strong>RgbDemo</strong>: demo RGB.</li>
+<li><strong>DelayDemo</strong>: test de natives de HW.</li>
+<li><strong>LedBlink</strong>: parpadeo de LED.</li>
+<li><strong>ImgDemo</strong>, <strong>LvglDemo</strong>: demos de display.</li>
+<li><strong>Menu</strong>, <strong>WordQuest</strong>, <strong>Tetris</strong>: juegos/demos.</li>
+<li><strong>Args</strong>, <strong>Arr</strong>, <strong>Fields1</strong>, etc.: tests de la JVM.</li>
+</ul>
+<p>Para ejecutar una app en la placa: <code>java ColorShow</code> (desde el directorio <code>/java</code>).</p>
+
+<h2 id="natives">Crear nuevas librerias y natives</h2>
+<ol>
+<li>Crear <code>jvm/lib/esp32p4/MiLib.java</code> con metodos <code>native</code>.</li>
+<li>Implementar las funciones C en <code>device/jvm/native_*.c</code> (o crear un nuevo fichero).</li>
+<li>Registrarlas en <code>jvm/java_lib.c</code>.</li>
+<li>Anadir el nombre a <code>LIB_JAVA</code> en <code>jvm/build-examples.sh</code>.</li>
+<li>Recompilar las apps con <code>./build-examples.sh</code>.</li>
+<li>Subir solo las apps (<code>.class</code>) a <code>/java</code> en la SD, no las librerias (salvo que se quieran actualizar).</li>
+</ol>
+
+<h2 id="web">Interfaz web / file manager / terminal</h2>
+<p>El servidor HTTP en el puerto 80 (<code>shell/xsh_httpd.c</code>) sirve:</p>
+<ul>
+<li>Ficheros estaticos desde la SD (incluido <code>/index.html</code>).</li>
+<li>Un API en <code>/api/</code> para el gestor de archivos (<code>httpApiHandle</code> en <code>shell/httpapi.c</code>).</li>
+<li>Un terminal web en <code>/webterm</code> (usa <code>MEMTTY0</code> y <code>webterm.c</code>).</li>
+</ul>
+<p>La pagina <code>index.html</code> no esta en el kernel; es un fichero de la SD. Para actualizarla, copia el nuevo <code>web/index.html</code> a la raiz de la SD.</p>
+
+<h2 id="upload">Subir ficheros a la SD</h2>
+<p>Desde la consola Xinu:</p>
+<pre>
+cd /java
+wget http://&lt;host&gt;:8001/App.class App.class
+</pre>
+<p>O por XMODEM:</p>
+<pre>
+xmodem recv /java/App.class
+</pre>
+<p>Nota: <code>wget</code> funciona bien si la respuesta HTTP no supera el buffer TCP (1024 B total). Para ficheros grandes, el servidor envia en varios segmentos y el kernel los lee correctamente.</p>
+
+<h2 id="troubleshoot">Problemas comunes</h2>
+<ul>
+<li><strong>IRAM overflow</strong>: quitar comandos de shell o simplificar codigo. No ampliar a 140 KiB.</li>
+<li><strong>0 bytes en wget</strong>: verificar que <code>TCP_INIT_WND</code> <= <code>TCP_IBLEN</code> en <code>include/tcp.h</code>.</li>
+<li><strong>ColorShow no para desde la consola</strong>: resetear la placa (el hilo JVM acapara la CPU).</li>
+<li><strong>Network: no link</strong>: verificar cable y alimentacion del W5500. La espera es de 5 s.</li>
+<li><strong>mem muestra heap negativo</strong>: bug corregido; usar <code>free</code> para datos fiables.</li>
+</ul>
+
+<h2 id="quickref">Referencia rapida</h2>
+<table>
+<tr><th>Accion</th><th>Comando</th></tr>
+<tr><td>Compilar kernel</td><td><code>cd compile && source ../env.sh && make PLATFORM=esp32s3 -j4</code></td></tr>
+<tr><td>Flashear</td><td><code>esptool ... write-flash 0x0 xinu.boot</code></td></tr>
+<tr><td>Compilar apps Java</td><td><code>cd jvm && ./build-examples.sh</code></td></tr>
+<tr><td>Subir app</td><td><code>wget http://host:8001/App.class App.class</code></td></tr>
+<tr><td>Ejecutar app</td><td><code>java App</code></td></tr>
+<tr><td>Ver memoria</td><td><code>mem</code> / <code>free</code> / <code>psram</code></td></tr>
+<tr><td>Ver procesos</td><td><code>ps</code></td></tr>
+<tr><td>Montar red</td><td><code>netup</code></td></tr>
+<tr><td>Iniciar HTTP</td><td><code>httpd 80</code></td></tr>
+<tr><td>Iniciar Telnet</td><td><code>telnetserver -n 1</code></td></tr>
+</table>
+
+<p style="margin-top:40px;color:#64748b;font-size:12px;">Generado para el proyecto Xinu ESP32-S3.</p>
+</main>
+</body>
+</html>

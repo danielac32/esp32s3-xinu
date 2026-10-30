@@ -1,0 +1,48 @@
+# This Makefile contains rules to build files in the shell/ directory.
+
+# Name of this component (the directory this file is stored in)
+COMP = shell
+
+# Source files for this component
+C_FILES = shell.c lexan.c getopt.c
+
+# General shell commands
+C_FILES += xsh_clear.c xsh_date.c xsh_exit.c xsh_help.c
+C_FILES += xsh_reset.c xsh_sleep.c xsh_config.c xsh_java.c
+
+# Process commands
+C_FILES += xsh_kill.c xsh_ps.c
+
+# Memory commands
+C_FILES += xsh_memdump.c xsh_memstat.c xsh_free.c xsh_psram.c
+
+# Kernel information commands
+C_FILES += xsh_sem.c xsh_mon.c
+
+# UART commands
+C_FILES +=
+
+# Networking commands
+C_FILES += xsh_arp.c xsh_netdown.c xsh_netstat.c xsh_netup.c
+C_FILES += xsh_ping.c xsh_route.c xsh_tcpstat.c xsh_telnet.c
+C_FILES += xsh_telnetserver.c xsh_telnetd.c xsh_udpstat.c
+C_FILES += xsh_dns.c xsh_wget.c xsh_curl.c xsh_httpd.c httpapi.c xsh_xmodem.c
+C_FILES += webterm.c
+C_FILES += xsh_ifconfig.c xsh_ip.c xsh_nc.c xsh_rdate.c
+
+# Board peripherals: SD card, TFT display, GPIO and W5500
+C_FILES += xsh_sd.c xsh_gpio.c
+C_FILES += xsh_button.c xsh_w5500.c
+
+# FAT filesystem commands (one file per command)
+C_FILES += xsh_fsutil.c
+C_FILES += xsh_fat.c xsh_pwd.c xsh_cd.c xsh_ls.c xsh_cat.c
+C_FILES += xsh_cp.c xsh_mv.c xsh_rm.c xsh_rmdir.c xsh_mkdir.c
+C_FILES += xsh_echo.c xsh_df.c xsh_du.c
+C_FILES += xsh_head.c xsh_tail.c xsh_stat.c xsh_hexdump.c xsh_dumpfile.c
+
+S_FILES =
+
+# Add the files to the compile source path
+DIR = ${TOPDIR}/${COMP}
+COMP_SRC += ${S_FILES:%=${DIR}/%} ${C_FILES:%=${DIR}/%}

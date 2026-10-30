@@ -1,0 +1,20 @@
+# Rules to build files in this directory
+
+COMP = system/platforms/esp32s3
+
+S_FILES = vectors.S \
+	intutils.S \
+	pause.S \
+	halt.S \
+	ctxsw.S \
+	bswapsi2.S
+
+C_FILES = panic.c \
+	platforminit.c \
+	setupStack.c \
+	espclk.c \
+	exception.c \
+	intc.c
+
+DIR = ${TOPDIR}/${COMP}
+COMP_SRC += ${S_FILES:%=${DIR}/%} ${C_FILES:%=${DIR}/%}

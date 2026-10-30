@@ -1,0 +1,70 @@
+/**
+ * @file ld.script
+ *
+ * Linker script for the Xinu kernel on the ESP32-S3.
+ */
+/* Embedded Xinu, ported to ESP32-S3. */
+
+ENTRY(_start)
+
+MEMORY
+{
+    iram (rwx) : ORIGIN = 0x40378000, LENGTH = 0x20000   /* 128 KiB */
+    dram (rwx) : ORIGIN = 0x3FCA8000, LENGTH = 0x28000   /* 160 KiB */
+}
+
+SECTIONS
+{
+    .vector : ALIGN(1024)
+    {
+        KEEP(*(.vector))
+    } > iram
+
+    .init : ALIGN(16)
+    {
+        KEEP(*(.init .init.*))
+    } > iram
+
+    .text : ALIGN(16)
+    {
+        *(.literal .literal.*)
+        *(.text .text.*)
+        *(.gnu.linkonce.t.*)
+        _etext = .;
+    } > iram
+
+    .rodata : ALIGN(16)
+    {
+        *(.rodata .rodata.*)
+        *(.gnu.linkonce.r.*)
+    } > dram
+
+    .data : ALIGN(16)
+    {
+        *(.data .data.*)
+        *(.gnu.linkonce.d.*)
+        *(.sdata .sdata.*)
+    } > dram
+
+    . = ALIGN(16);
+    _bss_start = .;
+    .bss : ALIGN(16)
+    {
+        *(.bss .bss.*)
+        *(.sbss .sbss.*)
+        *(COMMON)
+    } > dram
+    . = ALIGN(16);
+    _bss_end = .;
+
+    _end = .;
+
+    /DISCARD/ :
+    {
+        *(.comment .comment.*)
+        *(.note .note.*)
+        *(.debug_*)
+        *(.xt.prop .xt.prop.*)
+        *(.xt.lit .xt.lit.*)
+    }
+}

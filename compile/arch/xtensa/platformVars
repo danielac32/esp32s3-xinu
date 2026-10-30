@@ -1,0 +1,33 @@
+#
+# Makefile definitions for Embedded Xinu shared between all supported
+# Xtensa ESP32-S3 platforms.
+#
+
+TEMPLATE_ARCH := xtensa
+
+# Architecture root and prefix (ignored if user overrides COMPILER_ROOT).
+ARCH_ROOT     :=
+ARCH_PREFIX   := xtensa-esp32s3-elf-
+
+# Flag for producing GDB debug information.
+BUGFLAG       := -gstabs+
+
+# Objcopy flags, used for including data files in the resulting binary.
+OCFLAGS       := -I binary -O elf32-xtensa-le -B xtensa
+
+# Add a way to test for any Xtensa ESP32-S3 platform in C code.
+DEFS          += -D_XINU_ARCH_XTENSA_ -D_XINU_ARCH_ESP32S3_
+
+# Default built target.  For the ESP32-S3 the ROM copies a raw image into
+# internal SRAM, so we let esptool turn the ELF into a flashable image.  A
+# plain "objcopy -O binary" will not do here: the image has two segments
+# (code in the instruction window at 0x40378000, data in the data window at
+# 0x3FCA0000), and objcopy would emit the ~7 MB of address space between
+# them as padding.
+ESPTOOL      ?= esptool
+# Note: --flash-mode/--flash-freq/--flash-size are options of the
+# "elf2image" subcommand, so they must come after it on the command line.
+ESPTOOLFLAGS ?= --flash-mode dio --flash-freq 80m --flash-size 8MB
+
+$(BOOTIMAGE): xinu.elf
+	$(ESPTOOL) --chip esp32s3 elf2image $(ESPTOOLFLAGS) -o $@ $^

@@ -1,0 +1,1452 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Dashboard técnico del port de Embedded Xinu al ESP32-S3: hardware, red W5500, concurrencia, drivers, JVM y manual.">
+<title>Xinu ESP32-S3 · Dashboard técnico</title>
+<style>
+:root{
+  --bg:#0a0f1d; --bg2:#0e1628; --card:#131d33; --card2:#17233d;
+  --line:#26344f; --txt:#e8eef7; --muted:#93a4bf; --dim:#6b7d99;
+  --acc:#6ea8fe; --acc2:#8b7cff; --ok:#3ddc97; --warn:#ffcc66; --bad:#ff6b6b;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:linear-gradient(180deg,#0a0f1d 0%,#0b1222 100%);color:var(--txt);
+  font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+a{color:var(--acc);text-decoration:none}
+a:hover{text-decoration:underline}
+code,kbd,pre{font-family:var(--mono)}
+code{background:#0b1322;border:1px solid #1f2c45;border-radius:4px;padding:.08em .35em;font-size:.9em}
+pre{position:relative;background:#080d18;border:1px solid var(--line);border-radius:10px;
+  padding:1rem 1rem .9rem;overflow:auto;font-size:.86rem;line-height:1.55;margin:.6rem 0 0}
+pre code{background:none;border:0;padding:0;font-size:inherit}
+.copy{position:absolute;top:.45rem;right:.45rem;background:#1b2944;color:var(--muted);
+  border:1px solid #2b3c5c;border-radius:6px;font:12px var(--mono);padding:.25rem .5rem;cursor:pointer}
+.copy:hover{color:var(--txt);border-color:var(--acc)}
+.layout{display:grid;grid-template-columns:260px minmax(0,1fr);min-height:100vh}
+aside{position:sticky;top:0;height:100vh;overflow:auto;background:#080d18;
+  border-right:1px solid var(--line);padding:1.1rem .9rem 2rem}
+.brand{display:flex;align-items:center;gap:.6rem;margin:.2rem .3rem 1rem}
+.logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--acc),var(--acc2));
+  display:grid;place-items:center;color:#07101f;font-weight:800;font-size:14px}
+.brand b{display:block;font-size:.95rem;line-height:1.2}
+.brand span{display:block;color:var(--dim);font-size:.72rem;letter-spacing:.06em;text-transform:uppercase}
+nav a{display:block;color:var(--muted);padding:.42rem .55rem;border-radius:7px;font-size:.9rem;
+  border-left:2px solid transparent}
+nav a:hover{background:#101a2d;color:var(--txt);text-decoration:none}
+nav a.active{background:#12203a;color:var(--txt);border-left-color:var(--acc)}
+nav .grp{margin:1rem .55rem .35rem;color:var(--dim);font-size:.7rem;letter-spacing:.09em;text-transform:uppercase}
+main{min-width:0;padding:0 1.5rem 4rem}
+.top{position:sticky;top:0;z-index:5;display:flex;gap:.8rem;align-items:center;
+  padding:.8rem 0;background:rgba(10,15,29,.88);backdrop-filter:blur(8px);border-bottom:1px solid #1b2740}
+.top h1{font-size:1rem;margin:0;font-weight:600;white-space:nowrap}
+.top .sp{flex:1}
+.search{width:min(320px,45vw);background:#0c1424;border:1px solid var(--line);color:var(--txt);
+  border-radius:8px;padding:.5rem .7rem;font:14px system-ui;outline:none}
+.search:focus{border-color:var(--acc)}
+.menu{display:none;background:#15213a;border:1px solid var(--line);color:var(--txt);border-radius:7px;padding:.4rem .6rem}
+.hero{padding:2.2rem 0 1.2rem}
+.hero h2{font-size:clamp(1.7rem,4vw,2.6rem);margin:0 0 .4rem;line-height:1.15;letter-spacing:-.02em}
+.hero p{color:var(--muted);margin:.2rem 0;max-width:70ch}
+.badges{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:1rem}
+.badge{font-size:.75rem;font-family:var(--mono);padding:.25rem .55rem;border-radius:999px;
+  border:1px solid #2a3b5a;background:#101a2d;color:var(--muted)}
+.badge.ok{color:var(--ok);border-color:#1f5c46;background:#0c241d}
+.badge.warn{color:var(--warn);border-color:#5c4a1f;background:#241f0c}
+.badge.bad{color:var(--bad);border-color:#5c2626;background:#240c0c}
+section{padding-top:2.2rem;margin-top:.4rem}
+section>h2{font-size:1.35rem;margin:0 0 .3rem;letter-spacing:-.01em}
+section>.lead{color:var(--muted);margin:.1rem 0 1rem;max-width:80ch}
+h3{font-size:1.02rem;margin:1.5rem 0 .5rem;color:#dbe7fa}
+h4{font-size:.92rem;margin:1.1rem 0 .35rem;color:#c9d8ef}
+.grid{display:grid;gap:.85rem;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.card{background:linear-gradient(180deg,var(--card) 0%,#111b2f 100%);border:1px solid var(--line);
+  border-radius:12px;padding:1rem 1.05rem;min-width:0}
+.card h3{margin:.05rem 0 .4rem;font-size:.98rem}
+.card p{margin:.3rem 0;color:var(--muted);font-size:.9rem}
+.card ul{margin:.35rem 0 .1rem;padding-left:1.1rem;color:var(--muted);font-size:.9rem}
+.card li{margin:.18rem 0}
+.stat{font-size:1.35rem;font-weight:700;color:var(--txt);font-family:var(--mono);letter-spacing:-.02em}
+.stat small{font-size:.72rem;color:var(--dim);font-weight:400;letter-spacing:0;display:block;margin-top:.15rem}
+.k{color:var(--dim);font-size:.78rem;text-transform:uppercase;letter-spacing:.08em}
+table{width:100%;border-collapse:collapse;margin:.6rem 0 0;font-size:.88rem}
+th,td{text-align:left;padding:.5rem .55rem;border-bottom:1px solid #1e2b44;vertical-align:top}
+th{color:var(--dim);font-weight:600;font-size:.76rem;text-transform:uppercase;letter-spacing:.06em}
+tr:last-child td{border-bottom:0}
+td code{white-space:nowrap}
+.tag{display:inline-block;font:11px var(--mono);padding:.1rem .4rem;border-radius:5px;
+  border:1px solid #2a3b5a;background:#101a2d;color:var(--muted)}
+.tag.ok{color:var(--ok);border-color:#1f5c46}
+.tag.warn{color:var(--warn);border-color:#5c4a1f}
+.tag.bad{color:var(--bad);border-color:#5c2626}
+.note{border-left:3px solid var(--acc);background:#0f1a2e;padding:.7rem .9rem;border-radius:0 8px 8px 0;
+  color:var(--muted);font-size:.9rem;margin:.8rem 0}
+.note.warn{border-left-color:var(--warn);background:#1d1a0e}
+.note.bad{border-left-color:var(--bad);background:#1d0e0e}
+.note b{color:var(--txt)}
+.diagram{color:#b9cbe6;font-size:.8rem;line-height:1.5}
+.cols2{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.check{list-style:none;padding:0;margin:.4rem 0}
+.check li{padding:.35rem 0 .35rem 1.6rem;position:relative;color:var(--muted);border-bottom:1px dashed #1c2941;font-size:.9rem}
+.check li:before{content:"☐";position:absolute;left:.2rem;color:var(--dim)}
+.check li.done:before{content:"☑";color:var(--ok)}
+.check li.done{color:#b9cbe6}
+.btns{display:flex;flex-wrap:wrap;gap:.5rem;margin:.7rem 0}
+.btn{display:inline-block;background:#152443;border:1px solid #2b4470;color:var(--txt);
+  padding:.5rem .8rem;border-radius:8px;font-size:.88rem}
+.btn:hover{border-color:var(--acc);text-decoration:none}
+.btn.primary{background:linear-gradient(135deg,#23467f,#2f3d86);border-color:#3d5c9e}
+.cmd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.35rem;margin:.6rem 0}
+.cmd{font:12px var(--mono);color:#c9d8ef;background:#0c1424;border:1px solid #1e2b44;
+  border-radius:6px;padding:.35rem .45rem}
+.fm-toolbar{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center;margin-bottom:.6rem}
+.fm-btn{background:#152443;border:1px solid #2b4470;color:var(--txt);padding:.4rem .65rem;border-radius:7px;font:12px var(--mono);cursor:pointer}
+.fm-btn:hover{border-color:var(--acc)}
+.fm-btn.primary{background:linear-gradient(135deg,#23467f,#2f3d86);border-color:#3d5c9e}
+.fm-sp{flex:1}
+.fm-path{font:12px var(--mono);color:var(--muted);background:#0c1424;border:1px solid #1e2b44;border-radius:6px;padding:.3rem .5rem;max-width:100%;overflow:auto;white-space:nowrap}
+.fm-path a{color:var(--acc)}
+.fm-drop{border:1px dashed #2d4162;border-radius:8px;padding:.8rem;text-align:center;color:var(--dim);font-size:.85rem;margin:.5rem 0}
+.fm-drop.over{border-color:var(--acc);background:#0f1a2e;color:var(--txt)}
+.fm-status{font:12px var(--mono);color:var(--muted);min-height:1.2rem;margin:.3rem 0}
+.fm-status.err{color:var(--bad)}
+.fm-table td:first-child{word-break:break-all}
+.fm-name{background:none;border:0;color:var(--txt);font:inherit;cursor:pointer;padding:0;text-align:left}
+.fm-name:hover{color:var(--acc);text-decoration:underline}
+.fm-name.dir{color:var(--acc)}
+.fm-act{display:flex;gap:.3rem;flex-wrap:wrap}
+.fm-mini{font:11px var(--mono);background:#101a2d;border:1px solid #2a3b5a;color:var(--muted);border-radius:5px;padding:.15rem .4rem;cursor:pointer}
+.fm-mini:hover{color:var(--txt);border-color:var(--acc)}
+.fm-mini.del:hover{color:var(--bad);border-color:#5c2626}
+.fm-empty{color:var(--dim);font-size:.9rem;padding:.8rem 0}
+.term-chips{display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.55rem}
+.term-chip{font:11px var(--mono);background:#101a2d;border:1px solid #2a3b5a;color:var(--muted);border-radius:5px;padding:.2rem .45rem;cursor:pointer}
+.term-chip:hover{color:var(--txt);border-color:var(--acc)}
+.term-wrap{background:#070d18;border:1px solid #1e2b44;border-radius:8px;padding:.65rem;font:12px/1.45 var(--mono);color:#cfe3ff;height:340px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:0}
+.term-row{display:flex;gap:.45rem;align-items:center;margin-top:.55rem;flex-wrap:wrap}
+.term-prompt{font:12px var(--mono);color:var(--acc)}
+.term-row input{flex:1;min-width:180px;background:#0c1424;border:1px solid #2a3b5a;color:var(--txt);border-radius:7px;padding:.55rem .65rem;font:13px var(--mono);outline:none}
+.term-row input:focus{border-color:var(--acc)}
+.term-row input:disabled{opacity:.55}
+.term-state{font:11px var(--mono);color:var(--muted);margin-top:.35rem;min-height:1.1rem}
+.term-state.err{color:var(--bad)}
+.term-state.busy{color:var(--warn)}
+footer{margin-top:3rem;padding-top:1.2rem;border-top:1px solid var(--line);color:var(--dim);font-size:.8rem}
+.hidden{display:none!important}
+@media(max-width:900px){
+  .layout{grid-template-columns:1fr}
+  aside{position:fixed;z-index:20;left:0;top:0;transform:translateX(-100%);transition:.2s;width:260px}
+  aside.open{transform:none}
+  .menu{display:block}
+  main{padding:0 1rem 3rem}
+  .top h1{font-size:.9rem}
+}
+@media print{
+  aside,.top,.copy{display:none!important}
+  .layout{display:block}
+  body{background:#fff;color:#000}
+  .card{border-color:#ccc;background:#fff}
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<aside id="side">
+  <div class="brand">
+    <div class="logo">X</div>
+    <div><b>Xinu ESP32-S3</b><span>Dashboard técnico</span></div>
+  </div>
+  <nav id="nav">
+    <a href="#resumen">Resumen</a>
+    <div class="grp">Sistema</div>
+    <a href="#hardware">Hardware</a>
+    <a href="#pines">Mapa de pines</a>
+    <a href="#memoria">Memoria</a>
+    <a href="#software">Arranque y build</a>
+    <div class="grp">Red</div>
+    <a href="#red">W5500 y pila</a>
+    <a href="#pruebas">Pruebas de red</a>
+    <div class="grp">Kernel</div>
+    <a href="#concurrencia">Concurrencia</a>
+    <a href="#drivers">Drivers</a>
+    <a href="#jvm">Simple JVM</a>
+    <a href="#shell">Shell</a>
+    <a href="#archivos">Archivos</a>
+    <a href="#terminal">Terminal</a>
+    <a href="#endpoints">Endpoints y tareas</a>
+    <div class="grp">Trabajo</div>
+    <a href="#modificar">Modificar el kernel</a>
+    <a href="#pendientes">Pendientes</a>
+    <a href="#manual">Manual</a>
+    <a href="docs.html">Documentación</a>
+  </nav>
+</aside>
+
+<main>
+<div class="top">
+  <button class="menu" id="menu" aria-label="Menú">☰</button>
+  <h1>Xinu · ESP32-S3</h1>
+  <div class="sp"></div>
+  <input class="search" id="q" type="search" placeholder="Buscar en el dashboard…" aria-label="Buscar">
+</div>
+
+<div class="hero" id="resumen">
+  <h2>Embedded Xinu en ESP32-S3</h2>
+  <p>Kernel propio, sin ESP-IDF y sin bootloader: la ROM carga la imagen en <code>0x0</code>.
+     Red real con W5500 por SPI2 hardware, FAT sobre microSD, pantalla ST7735 y una Simple JVM
+     que ejecuta las clases del proyecto P4 sin recompilarlas.</p>
+  <p>Esta página se sirve desde la propia placa (<code>httpd</code> en el puerto 80) y vive en la
+     microSD. El manual completo está en <a href="manual.html">manual.html</a>. La documentación extendida está en <a href="docs.html">docs.html</a>.</p>
+  <div class="badges">
+    <span class="badge ok">Red OK · ping 0%</span>
+    <span class="badge ok">HTTP OK</span>
+    <span class="badge ok">wget 16 KB / 100 KB · md5 OK</span>
+    <span class="badge ok">SPI2 5 MHz</span>
+    <span class="badge ok">JVM OK</span>
+    <span class="badge ok">Gestor de archivos OK</span>
+    <span class="badge ok">Terminal web OK</span>
+    <span class="badge warn">LVGL fase 2</span>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card"><div class="k">CPU</div><div class="stat">20 MHz<small>Xtensa LX7 · CALL0 ABI</small></div></div>
+  <div class="card"><div class="k">PSRAM</div><div class="stat">8 MB<small>0x3C000000 · pilas y buffers</small></div></div>
+  <div class="card"><div class="k">IRAM / DRAM</div><div class="stat">128 / 160 KiB<small>código y datos internos</small></div></div>
+  <div class="card"><div class="k">Flash</div><div class="stat">8 MB<small>imagen en 0x0 · DIO 80 MHz</small></div></div>
+  <div class="card"><div class="k">SPI W5500</div><div class="stat">5 MHz<small>SPI2 hardware · APB/4</small></div></div>
+  <div class="card"><div class="k">Heap libre</div><div class="stat">≈ 51.8 KB<small>tras el arranque</small></div></div>
+  <div class="card"><div class="k">TCP</div><div class="stat">10 sockets<small>NTCP 10 · TIME_WAIT 1 s</small></div></div>
+  <div class="card"><div class="k">Hilos / semáforos</div><div class="stat">50 / 128<small>NTHREAD / NSEM</small></div></div>
+</div>
+
+<section id="hardware">
+  <h2>Hardware</h2>
+  <p class="lead">Placa ESP32-S3 con módulo de 8 MB de PSRAM y 8 MB de flash. Un solo núcleo ejecuta
+     Xinu; el otro queda libre para el WiFi en una fase posterior.</p>
+  <div class="cols2">
+    <div class="card">
+      <h3>SoC y placa</h3>
+      <table>
+        <tr><th>Elemento</th><th>Detalle</th></tr>
+        <tr><td>SoC</td><td>ESP32-S3, Xtensa LX7, ABI CALL0</td></tr>
+        <tr><td>PSRAM</td><td>8 MB en <code>0x3C000000</code></td></tr>
+        <tr><td>Flash</td><td>8 MB, imagen Xinu en <code>0x0</code></td></tr>
+        <tr><td>Consola</td><td>UART0, 115200 8N1, GPIO43 TX / GPIO44 RX</td></tr>
+        <tr><td>Reloj</td><td>CPU y APB a 20 MHz (árbol sin tocar)</td></tr>
+        <tr><td>Arranque</td><td>ROM bootloader → <code>start.S</code> → <code>nulluser()</code></td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Periféricos</h3>
+      <table>
+        <tr><th>Periférico</th><th>Bus / uso</th></tr>
+        <tr><td>W5500</td><td>Ethernet 10/100, SPI2 hardware, modo MACRAW</td></tr>
+        <tr><td>microSD</td><td>SDMMC 4 bits, FAT</td></tr>
+        <tr><td>ST7735</td><td>TFT 128×160, SPI, reset compartido en GPIO15</td></tr>
+        <tr><td>Botón BOOT</td><td>GPIO0, polling, activo a nivel bajo</td></tr>
+        <tr><td>UART0</td><td>Consola del shell y logs de arranque</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="note warn"><b>GPIO15 es del TFT.</b> Es la línea de reset compartida entre la pantalla y el
+     W5500. El driver del TFT la posee y la pulsa al arrancar; el W5500 usa reset por software
+     (<code>MR.RST</code>) y nunca debe conducir ese pin, o borra la pantalla ya inicializada.</div>
+</section>
+
+<section id="pines">
+  <h2>Mapa de pines</h2>
+  <p class="lead">Tomado de <code>include/w5500.h</code>, <code>include/tft.h</code>,
+     <code>device/sd/sdhost.h</code>, <code>include/button.h</code> y
+     <code>device/uart-esp32s3/esp32uart.h</code>.</p>
+  <div class="card">
+    <table>
+      <tr><th>Periférico</th><th>Señal</th><th>GPIO</th><th>Notas</th></tr>
+      <tr><td rowspan="6">W5500</td><td>CS</td><td><code>10</code></td><td>CS manual, no periférico</td></tr>
+      <tr><td>MOSI</td><td><code>11</code></td><td>SPI2 / FSPI</td></tr>
+      <tr><td>SCK</td><td><code>12</code></td><td>SPI2 / FSPI</td></tr>
+      <tr><td>MISO</td><td><code>13</code></td><td>SPI2 / FSPI</td></tr>
+      <tr><td>INT</td><td><code>14</code></td><td>No cableado; <code>w5500Read</code> hace polling</td></tr>
+      <tr><td>RST</td><td><code>15</code></td><td>Compartido con el TFT; no se conduce desde el W5500</td></tr>
+      <tr><td rowspan="5">ST7735</td><td>CS</td><td><code>21</code></td><td>SPI</td></tr>
+      <tr><td>DC</td><td><code>16</code></td><td>Data/Command</td></tr>
+      <tr><td>MOSI</td><td><code>17</code></td><td>SPI</td></tr>
+      <tr><td>SCLK</td><td><code>18</code></td><td>SPI</td></tr>
+      <tr><td>RST</td><td><code>15</code></td><td>Compartido con el W5500</td></tr>
+      <tr><td rowspan="6">microSD</td><td>CLK</td><td><code>36</code></td><td>SDMMC</td></tr>
+      <tr><td>CMD</td><td><code>35</code></td><td>SDMMC</td></tr>
+      <tr><td>D0</td><td><code>37</code></td><td>SDMMC 4 bits</td></tr>
+      <tr><td>D1</td><td><code>38</code></td><td>SDMMC 4 bits</td></tr>
+      <tr><td>D2</td><td><code>33</code></td><td>SDMMC 4 bits</td></tr>
+      <tr><td>D3</td><td><code>34</code></td><td>SDMMC 4 bits</td></tr>
+      <tr><td>Botón</td><td>BOOT</td><td><code>0</code></td><td>Pull-up del módulo; pulsar a GND</td></tr>
+      <tr><td rowspan="2">UART0</td><td>TX</td><td><code>43</code></td><td>Consola</td></tr>
+      <tr><td>RX</td><td><code>44</code></td><td>Consola</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="memoria">
+  <h2>Memoria</h2>
+  <p class="lead">El enlazador parte el mapa en IRAM y DRAM; la PSRAM se inicializa aparte y tiene su
+     propio allocator. Las pilas de los hilos se colocan en PSRAM para no gastar SRAM interna.</p>
+  <div class="cols2">
+    <div class="card">
+      <h3>Mapa</h3>
+      <table>
+        <tr><th>Región</th><th>Base</th><th>Tamaño</th></tr>
+        <tr><td>IRAM</td><td><code>0x40378000</code></td><td>128 KiB</td></tr>
+        <tr><td>DRAM</td><td><code>0x3FCA8000</code></td><td>160 KiB</td></tr>
+        <tr><td>PSRAM</td><td><code>0x3C000000</code></td><td>8 MB</td></tr>
+        <tr><td>Flash</td><td><code>0x00000000</code></td><td>8 MB</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Qué va dónde</h3>
+      <ul>
+        <li><b>IRAM:</b> vectores, <code>ctxsw</code>, rutinas críticas y código marcado.</li>
+        <li><b>DRAM:</b> tablas del kernel, globals, heap de <code>memget</code>.</li>
+        <li><b>PSRAM:</b> pilas de hilo (<code>stkget</code>), buffers grandes, heap del JVM.</li>
+        <li><b>Flash:</b> la imagen completa; no se ejecuta código desde PSRAM.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card" style="margin-top:.85rem">
+    <h3>Pilas y allocators</h3>
+    <table>
+      <tr><th>Elemento</th><th>Valor</th><th>Uso</th></tr>
+      <tr><td><code>INITSTK</code></td><td>4096 B</td><td>Hilos normales (shell, daemons); <code>httpd</code> usa 8192 B</td></tr>
+      <tr><td><code>JVM_STK</code></td><td>65536 B</td><td>Hilo que ejecuta la VM y su recursión</td></tr>
+      <tr><td><code>NET_THR_STK</code></td><td>2048 B</td><td>Recepción de red y daemons ARP/ICMP</td></tr>
+      <tr><td><code>stkget</code></td><td>—</td><td>Pilas: PSRAM primero, SRAM como reserva</td></tr>
+      <tr><td><code>memget</code></td><td>—</td><td>Heap interno: mailboxes, estructuras pequeñas</td></tr>
+      <tr><td><code>psram_memget</code></td><td>—</td><td>Buffers grandes y estado del JVM</td></tr>
+    </table>
+    <div class="note"><b>Regla práctica:</b> nada de buffers de varios KB en la pila de 4 KB.
+      Usa <code>memget</code>/<code>psram_memget</code> y libera con la misma longitud.</div>
+  </div>
+</section>
+
+<section id="software">
+  <h2>Arranque y build</h2>
+  <p class="lead">No hay bootloader de ESP-IDF. La ROM carga la imagen en <code>0x0</code> y el
+     <code>start.S</code> del port prepara la pila y salta a <code>nulluser()</code>.</p>
+  <div class="card">
+    <h3>Secuencia de arranque</h3>
+<pre class="diagram"><code>ROM bootloader  (imagen en 0x0)
+  └─ start.S
+     └─ nulluser()                         system/initialize.c
+        ├─ platforminit()                  PSRAM, relojes, UART
+        ├─ sysinit()
+        │  ├─ tablas: thrtab, semtab, montab, memlist
+        │  ├─ psramMemInit()
+        │  ├─ mailboxInit()
+        │  ├─ devtab[i].init()             w5500Init, sdInit, tftInit...
+        │  └─ netInit()                    pool, ARP, ICMP, tcpTimer
+        ├─ enable()
+        └─ create(main)                    system/main.c
+           ├─ shell (SHELL0)
+           └─ bootsvc_tab[]                netup, telnetserver, httpd</code></pre>
+  </div>
+  <div class="cols2" style="margin-top:.85rem">
+    <div class="card">
+      <h3>Compilar</h3>
+<pre><code>cd /home/daniel/s3-xinu
+find . -name '*.o' -delete
+rm -rf compile/.deps
+cd compile
+source ../env.sh
+make PLATFORM=esp32s3 -j4</code></pre>
+    </div>
+    <div class="card">
+      <h3>Flashear</h3>
+<pre><code>esptool --chip esp32s3 \
+  --port /dev/ttyUSB1 --baud 460800 \
+  write-flash --flash-mode dio \
+  --flash-freq 80m --flash-size 8MB \
+  0x0 xinu.boot</code></pre>
+      <p>El CH340 de esta placa aparece como <code>/dev/ttyUSB1</code>.</p>
+    </div>
+  </div>
+  <div class="note"><b>ABI:</b> CALL0, sin <code>-mlongcalls</code> y sin <code>-lgcc</code>.
+     La coma flotante por software está implementada en <code>system/softfloat.c</code> y validada
+     con 0 fallos.</div>
+</section>
+
+<section id="red">
+  <h2>W5500 y pila de red</h2>
+  <p class="lead">El W5500 está en modo <b>MACRAW</b>: solo mueve tramas Ethernet. ARP, IPv4, ICMP,
+     TCP y UDP los implementa Xinu como hilos. El chip no hace offload de TCP/IP en este diseño.</p>
+  <div class="cols2">
+    <div class="card">
+      <h3>Configuración actual</h3>
+      <table>
+        <tr><th>Parámetro</th><th>Valor</th></tr>
+        <tr><td>Bus</td><td>SPI2 (FSPI) hardware, CS manual GPIO10</td></tr>
+        <tr><td>Reloj</td><td><b>5 MHz</b> = APB 20 MHz / 4</td></tr>
+        <tr><td>Modo</td><td>MACRAW, socket 0</td></tr>
+        <tr><td>Dirección</td><td>DHCP: 192.168.1.137/24, gw 192.168.1.1</td></tr>
+        <tr><td>Servidores</td><td><code>httpd</code> :80, <code>telnetserver</code> :23</td></tr>
+        <tr><td>TCP</td><td><code>NTCP 10</code>, <code>TIME_WAIT</code> 1 s</td></tr>
+        <tr><td>Timeout de recepción</td><td><code>TCP_CTRL_RCVTIMEO</code> 2 s en <code>httpd</code> (0 = bloqueo)</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Capas</h3>
+<pre class="diagram"><code>ping / httpd / telnet / wget
+       │        │
+     ICMP     TCP / UDP
+       │        │
+       └─ IPv4 ─┘
+           │
+  ARP ──► netSend / netRecv      struct netif
+           │
+     read(ETH0) / write(ETH0)    devtab[ETH0]
+           │
+     w5500Read / w5500Write     monitor ethptr->lock
+           │
+       registros SPI2
+           │
+     W5500 MACRAW  ── cable</code></pre>
+    </div>
+  </div>
+  <div class="card" style="margin-top:.85rem">
+    <h3>Quién hace qué</h3>
+    <table>
+      <tr><th>Pieza</th><th>Fichero</th><th>Función</th></tr>
+      <tr><td>SPI y registros</td><td><code>device/w5500/w5500Spi.c</code></td><td>SPI2, divisor, transferencias</td></tr>
+      <tr><td>Driver</td><td><code>w5500Init/Open/Read/Write/Control.c</code></td><td>MACRAW, buffers, CS</td></tr>
+      <tr><td>Interfaz</td><td><code>network/net/netUp.c</code></td><td><code>struct netif</code> y hilo <code>ETH0recv00</code></td></tr>
+      <tr><td>Recepción</td><td><code>network/net/netRecv.c</code></td><td>Pool, ethertype, despacho</td></tr>
+      <tr><td>IPv4</td><td><code>network/ipv4/ipv4Recv.c</code></td><td>Validación, <code>arpLearn</code>, demux</td></tr>
+      <tr><td>ARP</td><td><code>arpRecv/arpDaemon/arpLookup.c</code></td><td>Tabla, peticiones, resolución</td></tr>
+      <tr><td>ICMP</td><td><code>icmpRecv/icmpDaemon.c</code></td><td>Echo request/reply, ping</td></tr>
+      <tr><td>TCP</td><td><code>device/tcp/</code></td><td>Máquina de estados, ventana, RST</td></tr>
+      <tr><td>DHCP</td><td><code>network/dhcp/</code></td><td>Autoconfiguración al arrancar</td></tr>
+    </table>
+  </div>
+  <div class="note"><b>Espera fuera del monitor.</b> <code>w5500Read</code> y <code>w5500Write</code>
+     hacen <code>unlock()</code> antes de <code>sleep(1)</code>. Si durmieran con la llave del SPI,
+     el <code>httpd</code> no podría transmitir y la red se pararía.</div>
+  <div class="note"><b>ARP aprendido del tráfico entrante.</b> <code>ipv4Recv</code> llama a
+     <code>arpLearn()</code> con la MAC del emisor antes de responder, para que el hilo de recepción
+     no se bloquee resolviendo ARP.</div>
+</section>
+
+<section id="pruebas">
+  <h2>Pruebas de red</h2>
+  <p class="lead">Resultados medidos en la placa, no simulados. La verificación fuerte es siempre
+     <code>md5</code> del fichero original contra el que devuelve el <code>httpd</code> de la placa.</p>
+  <div class="card">
+    <table>
+      <tr><th>Fecha</th><th>Prueba</th><th>Resultado</th></tr>
+      <tr><td>2026-10-21</td><td>Ping host → placa, SPI 5 MHz</td><td><span class="tag ok">0% pérdida</span> 2.8–6.9 ms</td></tr>
+      <tr><td>2026-10-21</td><td><code>wget</code> 16 384 B → SD</td><td><span class="tag ok">md5 OK</span> <code>765550a0…</code></td></tr>
+      <tr><td>2026-10-21</td><td><code>wget</code> 102 400 B → SD</td><td><span class="tag ok">md5 OK</span> <code>a88cd902…</code></td></tr>
+      <tr><td>2026-10-21</td><td>Descarga SD → host por <code>httpd</code></td><td><span class="tag ok">200</span> 102 400 B, md5 idéntico</td></tr>
+      <tr><td>2026-10-21</td><td>Gestor de archivos: mkdir, subir, bajar, borrar, rmdir</td><td><span class="tag ok">OK</span> 4 KB y 100 KB, md5 idéntico</td></tr>
+      <tr><td>2026-10-21</td><td>Terminal web: <code>exec</code> + polling, <code>ps</code>, <code>free</code>, <code>java</code>, <code>ping</code></td><td><span class="tag ok">OK</span> salida capturada; segundo comando → 409</td></tr>
+      <tr><td>2026-10-21</td><td>Preconexión idle contra <code>httpd</code></td><td><span class="tag ok">OK</span> se libera a los 2 s; siguiente petición 200</td></tr>
+      <tr><td>anterior</td><td>100 peticiones HTTP secuenciales</td><td><span class="tag ok">100/100</span> máx ≈ 0.10 s</td></tr>
+      <tr><td>anterior</td><td><code>index.html</code> servido</td><td><span class="tag ok">md5 OK</span></td></tr>
+      <tr><td>anterior</td><td>JVM: Loop, StrBuild, FloatTest, ComplexDemo</td><td><span class="tag ok">OK</span></td></tr>
+    </table>
+  </div>
+  <div class="note warn"><b>Límite conocido:</b> el <code>httpd</code> atiende una conexión a la vez.
+     Mientras sirve, los SYN paralelos reciben RST. El acceptor + mailbox de la sección de
+     concurrencia es la solución pendiente.</div>
+</section>
+
+<section id="concurrencia">
+  <h2>Concurrencia</h2>
+  <p class="lead">En Xinu no hay procesos con memoria separada: son hilos que comparten el espacio de
+     direcciones. Por eso hacen falta mecanismos para no pisarse y para pasarse datos.</p>
+
+  <div class="card">
+    <h3>Los cuatro mecanismos</h3>
+    <table>
+      <tr><th>Mecanismo</th><th>Qué es</th><th>¿Lleva dato?</th><th>¿Destinatario?</th><th>Se bloquea…</th></tr>
+      <tr><td><b>Semáforo</b></td><td>Contador + cola de espera</td><td>No</td><td>No</td><td><code>wait</code> si el contador ≤ 0</td></tr>
+      <tr><td><b>Monitor</b></td><td>Semáforo(1) + dueño + recursión</td><td>No</td><td>No (solo dueño)</td><td><code>lock</code> si otro lo tiene</td></tr>
+      <tr><td><b>Mailbox</b></td><td>Array circular + 2 semáforos</td><td>1 <code>int</code></td><td>No</td><td><code>send</code> llena / <code>receive</code> vacía</td></tr>
+      <tr><td><b><code>send</code>/<code>receive</code></b></td><td>Un slot en <code>thrtab[tid]</code></td><td>1 <code>int</code></td><td><b>Sí, <code>tid</code></b></td><td><code>receive</code> sin mensaje</td></tr>
+    </table>
+  </div>
+
+  <div class="cols2" style="margin-top:.85rem">
+    <div class="card">
+      <h3>Semáforo</h3>
+<pre><code>semaphore s = semcreate(1);
+
+wait(s);       /* --count; si &lt;0, duerme */
+/* sección crítica */
+signal(s);     /* ++count; despierta    */</code></pre>
+      <p><code>semcreate(1)</code> = llave; <code>semcreate(0)</code> = evento;
+         <code>semcreate(N)</code> = N recursos. <code>count</code> negativo = número de
+         hilos dormidos.</p>
+      <p><b>Real:</b> el pool de buffers de red (<code>bfpalloc</code>, <code>bufget</code>).</p>
+    </div>
+    <div class="card">
+      <h3>Monitor</h3>
+<pre><code>monitor m = moncreate();
+
+lock(m);       /* recursivo para el dueño */
+buffer[idx] = dato;
+idx++;
+unlock(m);     /* al llegar a 0, despierta */</code></pre>
+      <p><code>lock</code> anidado solo incrementa <code>count</code>. <code>unlock</code> con
+         <code>count=0</code> devuelve <code>SYSERR</code>.</p>
+      <p><b>Real:</b> <code>ethptr-&gt;lock</code> (SPI), <code>s_fat_mon</code> (FAT).</p>
+    </div>
+  </div>
+
+  <div class="cols2" style="margin-top:.85rem">
+    <div class="card">
+      <h3>Mailbox</h3>
+<pre><code>mailbox q = mailboxAlloc(8);
+
+mailboxSend(q, (int)pkt);       /* bloquea si llena  */
+pkt = (struct packet *)mailboxReceive(q);</code></pre>
+      <p>No tiene destinatario: es la cola de un <b>servicio</b>. El dueño es el único que hace
+         <code>receive</code>.</p>
+      <p><b>Real:</b> <code>arpqueue</code>, <code>icmpqueue</code>.</p>
+    </div>
+    <div class="card">
+      <h3>Mensaje de hilo</h3>
+<pre><code>send(tid, (message)pkt);   /* va al slot de tid */
+msg = recvtime(1000);      /* 1 s; TIMEOUT si no llega */</code></pre>
+      <p>Un solo slot por hilo. Si el destino ya tiene mensaje, <code>send</code> falla. Es
+         <b>punto a punto</b>.</p>
+      <p><b>Real:</b> reply de ping, aviso de ARP resuelto.</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:.85rem">
+    <h3>Semáforo(1) vs monitor</h3>
+    <table>
+      <tr><th>Pregunta</th><th>Semáforo(1)</th><th>Monitor</th></tr>
+      <tr><td>¿Sabe quién lo tiene?</td><td>No</td><td>Sí (<code>owner</code>)</td></tr>
+      <tr><td>¿Recursivo?</td><td>No: el segundo <code>wait</code> duerme</td><td>Sí: <code>count++</code></td></tr>
+      <tr><td>¿Sobre-liberable?</td><td>Sí: dos <code>signal</code> dejan <code>count=2</code></td><td>No: <code>unlock</code> a 0 da <code>SYSERR</code></td></tr>
+      <tr><td>¿Recuperable si muere el dueño?</td><td>No hay forma de saberlo</td><td><code>moncount()</code> dice cuántos <code>unlock</code> faltan</td></tr>
+      <tr><td>Coste</td><td>Mínimo</td><td>1 semáforo + entrada</td></tr>
+    </table>
+    <div class="note"><b>La diferencia aparece cuando algo va mal:</b> un <code>signal</code> de más,
+      un <code>lock</code> anidado o un hilo que muere con la llave. El monitor está pensado para eso;
+      el semáforo no.</div>
+  </div>
+
+  <div class="cols2" style="margin-top:.85rem">
+    <div class="card">
+      <h3>Cuándo usar cada uno</h3>
+      <table>
+        <tr><th>Necesitas…</th><th>Usa…</th></tr>
+        <tr><td>Exclusión sobre una secuencia</td><td>Monitor</td></tr>
+        <tr><td>Esperar un evento</td><td>Semáforo(0)</td></tr>
+        <tr><td>Contar recursos</td><td>Semáforo(N)</td></tr>
+        <tr><td>Pasar trabajos a un servicio</td><td>Mailbox</td></tr>
+        <tr><td>Responder a un hilo concreto</td><td><code>send(tid)</code></td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Reglas de oro</h3>
+      <ul>
+        <li>En un ISR: ni <code>wait</code>, ni <code>sleep</code>, ni <code>lock</code>, ni <code>mailboxReceive</code>.</li>
+        <li>Nunca duermas con un monitor cogido.</li>
+        <li>Un <code>lock</code> por cada <code>unlock</code>; si hay dos monitores, orden global.</li>
+        <li>No liberes monitor/mailbox/semáforo en uso.</li>
+        <li>Si el mensaje es un puntero, define quién libera la memoria.</li>
+        <li>Una mailbox por servicio, no por proceso.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:.85rem">
+    <h3>Dónde se usa en este kernel</h3>
+    <table>
+      <tr><th>Mecanismo</th><th>Uso real</th><th>Por qué</th></tr>
+      <tr><td>Semáforo</td><td>Pool de buffers (<code>bfpalloc</code>)</td><td>Contar buffers libres; dormir si no hay</td></tr>
+      <tr><td>Monitor</td><td><code>ethptr-&gt;lock</code></td><td>La secuencia SPI del W5500 no se mezcla</td></tr>
+      <tr><td>Monitor</td><td><code>s_fat_mon</code></td><td>La FAT no es reentrante</td></tr>
+      <tr><td>Mailbox</td><td><code>arpqueue</code> → <code>arpDaemon</code></td><td>Responder ARP sin bloquear recepción</td></tr>
+      <tr><td>Mailbox</td><td><code>icmpqueue</code> → <code>icmpDaemon</code></td><td>Responder ping sin bloquear recepción</td></tr>
+      <tr><td><code>send</code></td><td>Reply de ping</td><td>Respuesta al <code>tid</code> que pingó</td></tr>
+      <tr><td><code>send</code></td><td><code>arpNotify</code></td><td>Avisar a quien espera resolución</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="drivers">
+  <h2>Drivers</h2>
+  <p class="lead">Cada driver se registra en <code>devtab[]</code> desde <code>xinu.conf</code>.
+     El kernel llama a <code>read(ETH0)</code>, no a <code>w5500Read()</code>.</p>
+  <div class="card">
+    <table>
+      <tr><th>Driver</th><th>Ficheros</th><th>Notas</th></tr>
+      <tr><td><b>W5500</b></td><td><code>device/w5500/</code></td><td>SPI2 5 MHz, MACRAW, monitor, polling de RX</td></tr>
+      <tr><td><b>microSD</b></td><td><code>device/sd/</code></td><td>SDMMC 4 bits, bloques, FAT en <code>fs/</code></td></tr>
+      <tr><td><b>ST7735</b></td><td><code>device/tft/</code></td><td>SPI, 128×160, reset GPIO15</td></tr>
+      <tr><td><b>Botón</b></td><td><code>device/button/</code></td><td>GPIO0, polling, sin interrupción</td></tr>
+      <tr><td><b>UART</b></td><td><code>device/uart-esp32s3/</code></td><td>UART0, 115200, FIFO</td></tr>
+      <tr><td><b>TTY</b></td><td><code>device/tty/</code></td><td>Capa de línea sobre UART</td></tr>
+      <tr><td><b>Telnet</b></td><td><code>device/telnet/</code></td><td>TTY sobre TCP, servidor <code>-n 1</code></td></tr>
+      <tr><td><b>JVM</b></td><td><code>device/jvm/</code> + <code>jvm/</code></td><td>Hilo <code>JVM</code>, pila 64 KB, estado en PSRAM</td></tr>
+      <tr><td><b>RAW/UDP/TCP</b></td><td><code>device/raw, udp, tcp</code></td><td>Dispositivos de red para el shell y servidores</td></tr>
+    </table>
+  </div>
+  <div class="note"><b>Añadir un driver:</b> bloque de tipo + instancia en
+     <code>xinu.conf</code>, directorio en <code>DEVICES</code> y funciones
+     <code>init/open/close/read/write/getc/putc/control</code>. <code>system/conf.c</code> se genera
+     solo; no se edita.</div>
+</section>
+
+<section id="jvm">
+  <h2>Simple JVM</h2>
+  <p class="lead">El port del proyecto P4 conserva los nombres <code>esp32p4/*</code> para que las
+     clases compiladas en el P4 corran sin recompilar. La VM se ejecuta en su propio hilo con pila
+     de 64 KB en PSRAM.</p>
+  <div class="cols2">
+    <div class="card">
+      <h3>Detalles</h3>
+      <table>
+        <tr><th>Elemento</th><th>Valor</th></tr>
+        <tr><td>Comando</td><td><code>java &lt;Clase&gt;</code> (sin <code>.class</code>)</td></tr>
+        <tr><td>Pila del hilo</td><td><code>JVM_STK</code> = 64 KB</td></tr>
+        <tr><td>Heap</td><td><code>JVM_HEAP_SLOTS</code> = 2048 slots</td></tr>
+        <tr><td>Memoria</td><td>Estado y buffers en PSRAM</td></tr>
+        <tr><td>GC</td><td>No hay; evitar bucles que asignan sin parar</td></tr>
+        <tr><td>API de pausa</td><td><code>esp32p4.Sys.sleep(ms)</code></td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Clases verificadas</h3>
+      <ul>
+        <li><code>java Loop</code></li>
+        <li><code>java StrBuild</code></li>
+        <li><code>java FloatTest</code></li>
+        <li><code>java ComplexDemo</code></li>
+      </ul>
+      <p>Los ejemplos del P4 corren sin cambios. <code>Sys.run()</code> sigue comentado: no hay PMIC
+         en el S3 y no se incluye <code>esp32p4/PMIC.java</code>.</p>
+    </div>
+  </div>
+  <div class="note warn"><b>Pendiente:</b> <code>Thread.sleep(long)</code> apunta a un nativo que hace
+     <code>pop</code> de un <code>int</code>; usa <code>esp32p4.Sys.sleep(int)</code> o corrige la
+     firma. Tampoco hay GC real: los bucles largos que crean objetos acaban agotando el heap.</div>
+</section>
+
+<section id="shell">
+  <h2>Shell</h2>
+  <p class="lead">Prompt <code>xsh$</code>. Disponible por UART0 y por telnet (puerto 23). Los
+     servicios de arranque ejecutan comandos de esta misma tabla.</p>
+  <div class="card">
+    <h3>Comandos</h3>
+    <div class="cmd-grid">
+      <div class="cmd">arp</div><div class="cmd">button</div><div class="cmd">cat</div><div class="cmd">cd</div>
+      <div class="cmd">clear</div><div class="cmd">config</div><div class="cmd">cp</div><div class="cmd">curl</div>
+      <div class="cmd">date</div><div class="cmd">df</div><div class="cmd">dns</div><div class="cmd">du</div>
+      <div class="cmd">dumpfile</div><div class="cmd">echo</div><div class="cmd">exit</div><div class="cmd">fat</div>
+      <div class="cmd">free</div><div class="cmd">gpio</div><div class="cmd">head</div><div class="cmd">help</div>
+      <div class="cmd">hexdump</div><div class="cmd">httpd</div><div class="cmd">ifconfig</div><div class="cmd">ip</div>
+      <div class="cmd">java</div><div class="cmd">kill</div><div class="cmd">lcd</div><div class="cmd">ls</div>
+      <div class="cmd">lvgl</div><div class="cmd">mem</div><div class="cmd">memdump</div><div class="cmd">mkdir</div>
+      <div class="cmd">mon</div><div class="cmd">mv</div><div class="cmd">nc</div><div class="cmd">netdown</div>
+      <div class="cmd">netstat</div><div class="cmd">netup</div><div class="cmd">ping</div><div class="cmd">ps</div>
+      <div class="cmd">psram</div><div class="cmd">pwd</div><div class="cmd">rdate</div><div class="cmd">reset</div>
+      <div class="cmd">rm</div><div class="cmd">rmdir</div><div class="cmd">route</div><div class="cmd">sd</div>
+      <div class="cmd">sem</div><div class="cmd">sleep</div><div class="cmd">stat</div><div class="cmd">tail</div>
+      <div class="cmd">tcpstat</div><div class="cmd">telnet</div><div class="cmd">telnetd</div><div class="cmd">telnetserver</div>
+      <div class="cmd">tft</div><div class="cmd">touch</div><div class="cmd">uptime</div><div class="cmd">uartstat</div>
+      <div class="cmd">udpstat</div><div class="cmd">w5500</div><div class="cmd">wget</div><div class="cmd">wifi</div>
+      <div class="cmd">xmodem</div><div class="cmd">?</div>
+    </div>
+  </div>
+  <div class="cols2" style="margin-top:.85rem">
+    <div class="card">
+      <h3>Diagnóstico</h3>
+<pre><code>ps              hilos y prioridades
+sem             semáforos: contador y waiters
+mon             monitores: dueño y profundidad
+free            memoria libre
+netstat         interfaces y contadores
+tcpstat         conexiones TCP
+arp             tabla ARP
+route           rutas
+df              espacio en la SD</code></pre>
+    </div>
+    <div class="card">
+      <h3>Red y ficheros</h3>
+<pre><code>ping 192.168.1.1
+wget http://192.168.1.144:8001/big.bin f.bin
+httpd 80
+telnetserver -n 1
+curl http://192.168.1.1/
+ls
+cat index.html
+java Loop</code></pre>
+    </div>
+  </div>
+</section>
+
+<section id="archivos">
+  <h2>Gestor de archivos</h2>
+  <p class="lead">Sube, descarga, borra y organiza ficheros de la microSD sin usar la consola.
+     La API vive bajo <code>/api/</code> y la sirve el mismo <code>httpd</code> del puerto 80.</p>
+  <div class="note warn"><b>Sin autenticación:</b> cualquiera que llegue a la placa puede
+     borrar ficheros. Úsalo solo en una LAN de confianza y no expongas el puerto 80 a Internet.</div>
+  <div class="card" id="fmCard">
+    <div class="fm-toolbar">
+      <button class="fm-btn" id="fmUp" type="button">↑ Subir</button>
+      <button class="fm-btn" id="fmRefresh" type="button">⟳ Actualizar</button>
+      <button class="fm-btn" id="fmMkdir" type="button">+ Carpeta</button>
+      <button class="fm-btn primary" id="fmPick" type="button">Subir ficheros</button>
+      <input type="file" id="fmInput" multiple hidden>
+      <span class="fm-sp"></span>
+      <span class="fm-path" id="fmPath">/</span>
+    </div>
+    <div class="fm-drop" id="fmDrop">Arrastra ficheros aquí para subirlos a la carpeta actual</div>
+    <div class="fm-status" id="fmStatus"></div>
+    <table class="fm-table">
+      <thead><tr><th>Nombre</th><th>Tamaño</th><th>Acciones</th></tr></thead>
+      <tbody id="fmBody"></tbody>
+    </table>
+  </div>
+</section>
+
+<section id="terminal">
+  <h2>Terminal web</h2>
+  <p class="lead">Ejecuta comandos del shell desde el navegador. El comando corre en el hilo
+     <code>webshell</code> y su salida se captura con el dispositivo <code>MEMTTY0</code>;
+     la página consulta el trabajo hasta que termina.</p>
+  <div class="note warn"><b>Sin autenticación:</b> los comandos se ejecutan con privilegios
+     de kernel. Cualquiera en la LAN puede lanzar <code>reset</code>, <code>kill</code> o
+     borrar ficheros. No expongas el puerto 80 a Internet.</div>
+  <div class="note"><b>No interactivo:</b> <code>telnet</code>, <code>nc</code> y
+     <code>xmodem</code> necesitan una consola real. Tampoco se admiten redirecciones ni
+     <code>&amp;</code>. Los comandos largos se pueden consultar, pero todavía no hay botón
+     de cancelar.</div>
+  <div class="card" id="termCard">
+    <div class="term-chips">
+      <button type="button" class="term-chip" data-cmd="ps">ps</button>
+      <button type="button" class="term-chip" data-cmd="free">free</button>
+      <button type="button" class="term-chip" data-cmd="ls /">ls /</button>
+      <button type="button" class="term-chip" data-cmd="df">df</button>
+      <button type="button" class="term-chip" data-cmd="route">route</button>
+      <button type="button" class="term-chip" data-cmd="tcpstat">tcpstat</button>
+      <button type="button" class="term-chip" data-cmd="java StrBuild">java StrBuild</button>
+    </div>
+    <pre class="term-wrap" id="termOut" aria-live="polite"></pre>
+    <div class="term-row">
+      <span class="term-prompt">xsh$</span>
+      <input id="termIn" autocomplete="off" spellcheck="false"
+             placeholder="ls /, free, ps, java StrBuild..." aria-label="Comando">
+      <button type="button" class="fm-btn primary" id="termRun">Ejecutar</button>
+      <button type="button" class="fm-btn" id="termClear">Limpiar</button>
+    </div>
+    <div class="term-state" id="termState">listo</div>
+  </div>
+</section>
+
+<section id="endpoints">
+  <h2>Endpoints y tareas</h2>
+  <p class="lead">Mapa exacto de quién atiende cada ruta y qué hilo la ejecuta. Todo pasa por el
+     mismo <code>httpd</code> del puerto 80: no hay un servidor aparte para la API ni para el
+     terminal. Las líneas son las de esta revisión del árbol.</p>
+
+  <div class="card">
+    <h3>Rutas HTTP</h3>
+    <table>
+      <tr><th>Método y ruta</th><th>Función</th><th>Fichero:línea</th><th>Hilo</th><th>Respuesta</th></tr>
+      <tr><td><code>GET /</code> y ficheros de la SD</td><td><code>serve_static()</code></td><td><code>shell/xsh_httpd.c:220</code></td><td><code>httpd</code></td><td><code>200</code>; <code>/</code> → <code>/index.html</code>; <code>404</code> si no existe</td></tr>
+      <tr><td><code>GET /api/files?path=/dir</code></td><td><code>api_files()</code></td><td><code>shell/httpapi.c:263</code></td><td><code>httpd</code></td><td><code>200</code> JSON; <code>400</code>/<code>404</code></td></tr>
+      <tr><td><code>GET /api/download?path=/file</code></td><td><code>api_download()</code></td><td><code>shell/httpapi.c:313</code></td><td><code>httpd</code></td><td><code>200</code> binario; <code>400</code>/<code>404</code></td></tr>
+      <tr><td><code>PUT /api/file?path=/file</code></td><td><code>api_upload()</code></td><td><code>shell/httpapi.c:352</code></td><td><code>httpd</code></td><td><code>201</code> JSON; <code>400</code>/<code>409</code>/<code>411</code>/<code>413</code>/<code>500</code></td></tr>
+      <tr><td><code>DELETE /api/file?path=/file</code></td><td><code>api_delete()</code></td><td><code>shell/httpapi.c:432</code></td><td><code>httpd</code></td><td><code>200</code> JSON; <code>400</code>/<code>404</code>/<code>409</code>/<code>500</code></td></tr>
+      <tr><td><code>POST /api/mkdir?path=/dir</code></td><td><code>api_mkdir()</code></td><td><code>shell/httpapi.c:455</code></td><td><code>httpd</code></td><td><code>201</code> JSON; <code>400</code>/<code>409</code>/<code>500</code></td></tr>
+      <tr><td><code>POST /api/rmdir?path=/dir</code></td><td><code>api_rmdir()</code></td><td><code>shell/httpapi.c:470</code></td><td><code>httpd</code></td><td><code>200</code> JSON; <code>400</code>/<code>409</code></td></tr>
+      <tr><td><code>POST /api/exec</code></td><td><code>api_exec()</code></td><td><code>shell/httpapi.c:485</code></td><td><code>httpd</code> encola; ejecuta <code>webshell</code></td><td><code>202</code> JSON; <code>400</code>/<code>409</code>/<code>413</code>/<code>503</code></td></tr>
+      <tr><td><code>GET /api/job?id=N</code></td><td><code>api_job()</code></td><td><code>shell/httpapi.c:561</code></td><td><code>httpd</code> lee el estado; salida de <code>MEMTTY0</code></td><td><code>202</code> running; <code>200</code> done; <code>400</code>/<code>404</code>/<code>503</code></td></tr>
+      <tr><td>Otra <code>/api/...</code></td><td><code>httpApiHandle()</code></td><td><code>shell/httpapi.c:593</code></td><td><code>httpd</code></td><td><code>404</code> JSON <code>unknown endpoint</code></td></tr>
+    </table>
+    <p>El despacho por ruta y método está en <code>httpApiHandle()</code>
+       (<code>shell/httpapi.c:593-648</code>). <code>httpdServer()</code> lo llama para cualquier
+       ruta que empiece por <code>/api/</code> (<code>shell/xsh_httpd.c:350-362</code>). Las rutas
+       que no empiezan por <code>/api/</code> son ficheros estáticos y solo aceptan <code>GET</code>;
+       otro método recibe <code>405</code>. Las respuestas son HTTP/1.0 con
+       <code>Connection: close</code>.</p>
+  </div>
+
+  <div class="card" style="margin-top:.85rem">
+    <h3>Cadena de creación de tareas</h3>
+    <table>
+      <tr><th>Tarea</th><th>La crea</th><th>Pila</th><th>Prioridad</th><th>Papel</th></tr>
+      <tr><td><code>MAIN</code></td><td><code>nulluser()</code> → <code>create(main, ...)</code> (<code>system/initialize.c:68</code>)</td><td><code>INITSTK</code> 4096 B</td><td>20</td><td>Abre consola/TFT/ETH0, llama a <code>bootServices()</code> y crea la shell serie</td></tr>
+      <tr><td><code>BOOT1</code></td><td><code>bootServices()</code> → <code>create(bootsvc_run, ...)</code> (<code>system/boot.c:105</code>)</td><td><code>SHELL_CMDSTK</code> 4096 B</td><td><code>BOOTSVC_PRIO</code> = 19</td><td>Ejecuta <code>telnetserver -n 1</code></td></tr>
+      <tr><td><code>BOOT2</code></td><td>igual que <code>BOOT1</code></td><td>4096 B</td><td>19</td><td>Ejecuta <code>httpd 80</code></td></tr>
+      <tr><td><code>httpd</code></td><td><code>xsh_httpd()</code> → <code>create(httpdServer, ...)</code> (<code>shell/xsh_httpd.c:397</code>)</td><td><code>HTTPD_STK</code> 8192 B</td><td><code>INITPRIO</code> 20</td><td>Acepta una conexión, lee, despacha y libera</td></tr>
+      <tr><td><code>webshell</code></td><td><code>webtermInit()</code> → <code>create(webtermTask, ...)</code> (<code>shell/webterm.c:94</code>)</td><td><code>WEBTERM_STK</code> 16384 B (PSRAM)</td><td><code>WEBTERM_PRIO</code> 18</td><td>Espera en <code>jobsem</code> y ejecuta el trabajo</td></tr>
+      <tr><td>hijo de comando</td><td><code>webtermRun()</code> → <code>create(commandtab[i].procedure, ...)</code> (<code>shell/webterm.c:301</code>)</td><td><code>SHELL_CMDSTK</code> 4096 B</td><td><code>WEBTERM_CMD_PRIO</code> 18</td><td>Ejecuta una orden no incorporada con <code>stdout</code>/<code>stderr</code> en <code>MEMTTY0</code></td></tr>
+      <tr><td><code>JVM</code></td><td><code>xsh_java()</code> → <code>create(jvmTask, ...)</code> (<code>shell/xsh_java.c:90</code>)</td><td><code>JVM_STK</code> 65536 B (PSRAM)</td><td><code>INITPRIO</code> 20</td><td>Ejecuta Java y hereda los descriptores del comando</td></tr>
+      <tr><td><code>httpdRel</code></td><td><code>httpdRelease()</code> → <code>create(httpdReleaser, ...)</code> (<code>shell/xsh_httpd.c:279</code>)</td><td><code>INITSTK</code> 4096 B</td><td>20</td><td>Cierra el socket sin bloquear el siguiente <code>accept</code></td></tr>
+      <tr><td><code>SHELL0</code></td><td><code>main()</code> → <code>create(shell, ...)</code> (<code>system/main.c:85</code>)</td><td><code>INITSTK</code> 4096 B</td><td>20</td><td>Shell de la consola serie</td></tr>
+      <tr><td><code>MEMTTY0</code></td><td>No es tarea: <code>sysinit()</code> llama a <code>devtab[i].init()</code> (<code>system/initialize.c:156</code>)</td><td>—</td><td>—</td><td>Driver de captura; reserva 8 KB en PSRAM</td></tr>
+    </table>
+<pre class="diagram"><code>ROM 0x0 → start.S → nulluser()
+  → platforminit() + sysinit()       devtab[].init() incluye MEMTTY0
+  → create(MAIN)                     system/initialize.c:68
+      → bootServices()               system/main.c:73
+          → netup                    wait=TRUE: corre en MAIN
+          → BOOT1 → xsh_telnetserver
+          → BOOT2 → xsh_httpd → create(httpd)   shell/xsh_httpd.c:397
+      → create(SHELL0)               system/main.c:85
+
+httpdServer()                        shell/xsh_httpd.c:289
+  → webtermInit()                    shell/webterm.c:59
+      → moncreate() + semcreate(0)
+      → psram_memget(8256)           snapshot de salida
+      → create(webshell)             shell/webterm.c:94
+  → accept → read → httpApiHandle()
+
+POST /api/exec → api_exec() → webtermSubmit() → signal(jobsem)
+  → webshell → webtermRun()
+      → builtin: se ejecuta en webshell
+      → no builtin: create(hijo)     shell/webterm.c:301
+          → java: create(JVM)        shell/xsh_java.c:90</code></pre>
+    <p><code>bootsvc_tab[]</code> está en <code>system/boot.c:37</code>. <code>netup</code> lleva
+       <code>wait = TRUE</code> y corre dentro de <code>MAIN</code>; los servidores llevan
+       <code>wait = FALSE</code> y reciben un hilo <code>BOOTn</code>. La shell serie se crea
+       después, pero el scheduler puede ejecutar antes a los servicios.</p>
+  </div>
+
+  <div class="cols2" style="margin-top:.85rem">
+    <div class="card">
+      <h3><code>POST /api/exec</code></h3>
+      <ol>
+        <li><code>httpd</code> lee las cabeceras en un buffer de 2048 B y pasa el cuerpo ya leído
+            como <code>prebody</code>.</li>
+        <li><code>api_exec()</code> acepta el comando en el cuerpo (<code>text/plain</code>) o en
+            <code>?cmd=...</code>. Recorta espacios y saltos; máximo 159 B.</li>
+        <li><code>webtermSubmit()</code> toma <code>jobmon</code>, comprueba que no haya otro
+            trabajo, asigna id, copia el comando, pone <code>RUNNING</code>, limpia
+            <code>memtty</code> y hace <code>signal(jobsem)</code>.</li>
+        <li>Responde <code>202</code> con <code>{"ok":true,"id":N,"state":"running"}</code>. Si ya
+            hay un trabajo: <code>409</code> con <code>terminal busy</code>.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3><code>GET /api/job?id=N</code></h3>
+      <ol>
+        <li><code>webtermStatus()</code> consulta el estado bajo <code>jobmon</code>.</li>
+        <li>Si sigue en <code>RUNNING</code>: <code>202</code>, <code>X-Job-State: running</code>,
+            cuerpo vacío.</li>
+        <li>Si terminó, <code>webtermSnapshot()</code> copia la salida a otro buffer de PSRAM y
+            responde <code>200 text/plain</code> con <code>X-Job-State: done</code> y
+            <code>X-Job-Truncated: 0|1</code>.</li>
+        <li>Id desconocido: <code>404 unknown job</code>; sin <code>id</code>: <code>400 missing id</code>.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="cols2" style="margin-top:.85rem">
+    <div class="card">
+      <h3>Recursos y límites</h3>
+      <table>
+        <tr><th>Elemento</th><th>Valor</th></tr>
+        <tr><td>Puerto HTTP</td><td>80 (<code>HTTPD_PORT</code>)</td></tr>
+        <tr><td>Buffer de petición</td><td>2048 B (<code>HTTPD_RQMAX</code>)</td></tr>
+        <tr><td>Pila de <code>httpd</code></td><td>8192 B (<code>HTTPD_STK</code>)</td></tr>
+        <tr><td>Timeout de recepción</td><td>2000 ms (<code>HTTPD_RCVTIMEO</code>)</td></tr>
+        <tr><td>Comando máximo</td><td>159 B (<code>WEB_CMD_MAX</code> 160)</td></tr>
+        <tr><td>Salida capturada</td><td>8192 B (<code>MEMTTY_CAP</code>)</td></tr>
+        <tr><td>Snapshot</td><td>8256 B (<code>WEB_SNAP_CAP</code>)</td></tr>
+        <tr><td>Pila de <code>webshell</code></td><td>16384 B (<code>WEBTERM_STK</code>)</td></tr>
+        <tr><td>Pila de comando</td><td>4096 B (<code>SHELL_CMDSTK</code>)</td></tr>
+        <tr><td>Pila de JVM</td><td>65536 B (<code>JVM_STK</code>)</td></tr>
+        <tr><td>Subida máxima</td><td>16 MB (<code>API_MAX_UPLOAD</code>)</td></tr>
+        <tr><td>Buffer de subida</td><td>1024 B (<code>API_BUF</code>)</td></tr>
+        <tr><td>Path de la API</td><td>128 B (<code>FS_BUF_LEN</code>)</td></tr>
+        <tr><td>Path/query HTTP</td><td>192 B cada uno</td></tr>
+        <tr><td><code>MEMTTY0</code></td><td>índice 25, <code>NDEVS</code> 26</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Dónde añadir o cambiar algo</h3>
+      <ul>
+        <li><b>Ruta nueva:</b> añade el <code>if</code> de ruta y método en
+            <code>httpApiHandle()</code> (<code>shell/httpapi.c:593</code>) y la función
+            <code>api_*</code>. No hace falta tocar <code>boot.c</code>.</li>
+        <li><b>Trabajo asíncrono nuevo:</b> copia el patrón de <code>webterm.c</code>: estado bajo
+            monitor, semáforo para despertar al worker y <code>create()</code> para el worker.</li>
+        <li><b>Pilas/prioridades:</b> <code>HTTPD_STK</code>/<code>INITPRIO</code> en
+            <code>xsh_httpd.c</code>; <code>WEBTERM_STK</code>/<code>WEBTERM_PRIO</code> en
+            <code>webterm.c</code>; <code>SHELL_CMDSTK</code> en <code>include/shell.h</code>.</li>
+        <li><b>Límite de comando:</b> <code>WEB_CMD_MAX</code> en <code>include/webterm.h</code> y
+            el buffer <code>cmd</code> de <code>api_exec()</code>.</li>
+        <li><b>Página:</b> edita <code>web/index.html</code> y súbela como <code>index.new</code>,
+            luego <code>rm index.html</code> y <code>mv index.new index.html</code>.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="note warn"><b>Una conexión a la vez:</b> <code>httpd</code> acepta, atiende y
+     responde en serie. Después crea <code>httpdRel</code> para cerrar el socket sin esperar al FIN,
+     pero dos peticiones simultáneas aún pueden recibir RST. El timeout de 2 s evita que una
+     preconexión idle de Chrome bloquee el servidor. <b>Sin autenticación:</b> la API y el terminal
+     ejecutan con privilegios de kernel; úsalos solo en una LAN de confianza.</div>
+</section>
+
+<section id="modificar">
+  <h2>Modificar el kernel</h2>
+  <p class="lead">El árbol no usa git: haz un tarball antes de tocar nada. Cada directorio compila lo
+     que declara en su <code>Makerules</code>.</p>
+  <div class="cols2">
+    <div class="card">
+      <h3>Añadir un <code>.c</code></h3>
+      <ol>
+        <li>Crea el fichero en el directorio adecuado.</li>
+        <li>Añádelo a <code>C_FILES</code> en el <code>Makerules</code> de ese directorio.</li>
+        <li>Si es un directorio nuevo, añádelo a <code>APPCOMPS</code> o <code>DEVICES</code> en
+            <code>compile/platforms/esp32s3/platformVars</code>.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>Añadir un comando</h3>
+      <ol>
+        <li><code>shell/xsh_midemo.c</code> con <code>shellcmd xsh_midemo(int, char *[])</code>.</li>
+        <li>Prototipo en <code>include/shell.h</code>.</li>
+        <li>Entrada en <code>commandtab[]</code> (<code>shell/shell.c</code>).</li>
+        <li><code>C_FILES += xsh_midemo.c</code> en <code>shell/Makerules</code>.</li>
+      </ol>
+    </div>
+  </div>
+  <div class="cols2" style="margin-top:.85rem">
+    <div class="card">
+      <h3>Añadir un dispositivo</h3>
+      <ol>
+        <li>Driver con <code>init/open/close/read/write/getc/putc/control</code>.</li>
+        <li>Bloque de tipo e instancia en <code>xinu.conf</code>.</li>
+        <li>Directorio en <code>DEVICES</code> (<code>platformVars</code>).</li>
+        <li>No edites <code>system/conf.c</code>: es generado.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>Añadir un servicio al arranque</h3>
+      <ol>
+        <li>En <code>system/boot.c</code>, añade una entrada a <code>bootsvc_tab[]</code>.</li>
+        <li><code>wait = TRUE</code>: corre en el hilo de arranque y bloquea el siguiente.</li>
+        <li><code>wait = FALSE</code>: se lanza en su propio hilo.</li>
+      </ol>
+    </div>
+  </div>
+  <div class="card" style="margin-top:.85rem">
+    <h3>Configuración</h3>
+    <p>Se edita <code>compile/platforms/esp32s3/xinu.conf</code>. De ahí se generan
+       <code>include/conf.h</code> y <code>system/conf.c</code>.</p>
+<pre><code>#define NTHREAD   50
+#define NSEM      128
+#define NMON      16
+#define NMAILBOX  10
+#define NPOOL     8
+#define NTCP      10</code></pre>
+  </div>
+  <div class="note bad"><b>Errores típicos:</b> <code>undefined reference</code> → falta el
+     <code>.c</code> en <code>Makerules</code>; <code>implicit declaration</code> → falta el prototipo;
+     <code>dram overflowed</code> → demasiadas globales; <code>iram overflowed</code> → demasiado
+     código crítico.</div>
+</section>
+
+<section id="pendientes">
+  <h2>Pendientes</h2>
+  <p class="lead">Estado real del proyecto. Lo hecho está marcado; lo demás sigue abierto.</p>
+  <div class="cols2">
+    <div class="card">
+      <h3>Red</h3>
+      <ul class="check">
+        <li class="done">W5500 por SPI2 hardware</li>
+        <li class="done">SPI a 5 MHz y pruebas de 16 KB / 100 KB</li>
+        <li class="done">ARP aprendido del tráfico entrante</li>
+        <li class="done">RST con origen/destino correctos</li>
+        <li class="done">Ventana TCP y <code>tcpAllocPassive</code></li>
+        <li>HTTP concurrente: acceptor + mailbox + worker</li>
+        <li>XMODEM con ficheros grandes (falló a ~8 KB)</li>
+        <li>Ampliar <code>wget</code> a ficheros de varios MB</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Kernel y JVM</h3>
+      <ul class="check">
+        <li class="done">JVM con clases del P4</li>
+        <li class="done"><code>ps</code> sin corrupción (switch de opcodes)</li>
+        <li>GC del JVM (hoy no hay)</li>
+        <li><code>Thread.sleep(long)</code> vs <code>Sys.sleep(int)</code></li>
+        <li><code>ctxsw()</code> desde interrupción: rehacer <code>ctxsw.S</code>/<code>vectors.S</code></li>
+        <li>No volver a enmascarar con <code>PS=15</code>: rompe el arranque</li>
+        <li>Subir la CPU por encima de 20 MHz (árbol de relojes)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="cols2" style="margin-top:.85rem">
+    <div class="card">
+      <h3>Fase 2</h3>
+      <ul class="check">
+        <li>LVGL sobre ST7735 con <code>lv_conf.h</code> recortado</li>
+        <li>Cargador de <code>.bin</code> PIC</li>
+        <li>WiFi en el segundo núcleo</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Documentación</h3>
+      <ul class="check">
+        <li class="done"><code>docs/MANUAL-KERNEL.md</code></li>
+        <li class="done">Este dashboard en <code>index.html</code></li>
+        <li class="done">Manual navegable en <code>manual.html</code></li>
+        <li class="done"><code>README_ESP32S3.md</code> con el port real y los resultados de 5 MHz</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Web</h3>
+      <ul class="check">
+        <li class="done">Dashboard y manual en la SD</li>
+        <li class="done">API de archivos: listar, subir, bajar, borrar, mkdir, rmdir</li>
+        <li class="done">Gestor de archivos en el dashboard</li>
+        <li class="done">Terminal web: <code>POST /api/exec</code> + polling de <code>GET /api/job</code></li>
+        <li class="done">Timeout TCP de 2 s para preconexiones idle (<code>TCP_CTRL_RCVTIMEO</code>)</li>
+        <li>Cancelar comandos largos y salida en vivo (hoy se entrega al terminar)</li>
+        <li>Autenticación para <code>/api/</code></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="manual">
+  <h2>Manual</h2>
+  <p class="lead">El manual completo está en la SD como <code>manual.html</code>. El fuente Markdown
+     vive en <code>docs/MANUAL-KERNEL.md</code>.</p>
+  <div class="card">
+    <h3>Contenido del manual</h3>
+    <table>
+      <tr><th>Parte</th><th>Tema</th></tr>
+      <tr><td>0</td><td>Mapa del árbol, arranque, compilar y flashear</td></tr>
+      <tr><td>1</td><td>Refresco de C con el kernel: tipos, punteros, structs, varargs, macros, MMIO, memoria</td></tr>
+      <tr><td>2</td><td>Semáforos: implementación, usos, traza de contadores, trampas</td></tr>
+      <tr><td>3</td><td>Monitores: recursión, semáforo(1) vs monitor, reglas</td></tr>
+      <tr><td>4</td><td>Mailboxes: array circular, ARP/ICMP, “¿para quién es el mensaje?”</td></tr>
+      <tr><td>5</td><td>Mensajes de hilo: <code>send</code>/<code>receive</code>, el caso del ping</td></tr>
+      <tr><td>6</td><td>Cómo elegir y patrones de uso</td></tr>
+      <tr><td>7</td><td>Estudio de caso: un ping completo</td></tr>
+      <tr><td>8</td><td>Cómo modificar el kernel: ficheros, comandos, drivers, servicios, configuración</td></tr>
+      <tr><td>9</td><td>Ejercicios guiados</td></tr>
+      <tr><td>10</td><td>Caso real: terminal web (monitor, semáforo, <code>memtty</code>, timeout TCP)</td></tr>
+      <tr><td>A–C</td><td>API de bolsillo, constantes y glosario</td></tr>
+    </table>
+    <div class="btns">
+      <a class="btn primary" href="manual.html">Abrir el manual completo</a>
+      <a class="btn" href="#concurrencia">Resumen de concurrencia</a>
+      <a class="btn" href="#modificar">Cómo modificar</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Xinu ESP32-S3 · dashboard servido desde la microSD · actualizado el 2026-10-21 ·
+  <a href="manual.html">manual.html</a>
+</footer>
+</main>
+</div>
+
+<script>
+(function(){
+  var side=document.getElementById('side'), menu=document.getElementById('menu');
+  menu.addEventListener('click',function(){ side.classList.toggle('open'); });
+  document.querySelectorAll('nav a').forEach(function(a){
+    a.addEventListener('click',function(){ side.classList.remove('open'); });
+  });
+
+  var links=[].slice.call(document.querySelectorAll('nav a'));
+  var secs=links.map(function(a){ return document.querySelector(a.getAttribute('href')); });
+  function onScroll(){
+    var y=window.scrollY+120, best=0;
+    secs.forEach(function(s,i){ if(s && s.offsetTop<=y) best=i; });
+    links.forEach(function(a,i){ a.classList.toggle('active', i===best); });
+  }
+  window.addEventListener('scroll',onScroll,{passive:true}); onScroll();
+
+  document.querySelectorAll('pre').forEach(function(pre){
+    if(pre.id==='termOut') return; /* terminal: su salida no lleva botón copiar */
+    var b=document.createElement('button');
+    b.className='copy'; b.type='button'; b.textContent='copiar';
+    b.addEventListener('click',function(){
+      var t=pre.querySelector('code') ? pre.querySelector('code').innerText : pre.innerText;
+      if(navigator.clipboard){ navigator.clipboard.writeText(t).then(function(){ b.textContent='ok'; setTimeout(function(){b.textContent='copiar';},1200); }); }
+      else { b.textContent='n/a'; }
+    });
+    pre.appendChild(b);
+  });
+
+  var q=document.getElementById('q');
+  q.addEventListener('input',function(){
+    var s=q.value.trim().toLowerCase();
+    document.querySelectorAll('section').forEach(function(sec){
+      var cards=[].slice.call(sec.querySelectorAll('.card'));
+      var any=false;
+      cards.forEach(function(c){
+        var hit=!s || c.textContent.toLowerCase().indexOf(s)>=0;
+        c.classList.toggle('hidden',!hit);
+        if(hit) any=true;
+      });
+      var direct=sec.querySelector(':scope > .card, :scope > .grid, :scope > .cols2');
+      if(!s){ sec.classList.remove('hidden'); return; }
+      if(cards.length===0){
+        sec.classList.toggle('hidden', sec.textContent.toLowerCase().indexOf(s)<0);
+      } else {
+        sec.classList.toggle('hidden', !any);
+      }
+    });
+  });
+})();
+</script>
+<script>
+(function(){
+  var body=document.getElementById('fmBody');
+  if(!body) return;
+
+  var cwd='/', seq=0, names={};
+  var elPath=document.getElementById('fmPath');
+  var elStatus=document.getElementById('fmStatus');
+  var elDrop=document.getElementById('fmDrop');
+  var elInput=document.getElementById('fmInput');
+  var elCard=document.getElementById('fmCard');
+
+  function esc(s){
+    return String(s).replace(/[&<>"']/g,function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+  function enc(s){ return encodeURIComponent(s); }
+  function join(d,n){ return d==='/' ? '/'+n : d+'/'+n; }
+  function parent(p){
+    if(!p || p==='/') return '/';
+    var i=p.lastIndexOf('/');
+    return i<=0 ? '/' : p.slice(0,i);
+  }
+  function fmt(n){
+    if(n<1024) return n+' B';
+    if(n<1048576) return (n/1024).toFixed(1)+' KB';
+    return (n/1048576).toFixed(1)+' MB';
+  }
+  function status(msg,err){
+    elStatus.textContent=msg||'';
+    elStatus.className='fm-status'+(err?' err':'');
+  }
+  function errText(e){ return e && e.message ? e.message : 'error'; }
+
+  function api(url,opt,retry){
+    return fetch(url,opt).then(function(r){
+      return r.text().then(function(t){
+        var d={};
+        try{ d=JSON.parse(t); }catch(_){}
+        if(!r.ok) throw new Error(d.error || ('HTTP '+r.status));
+        return d;
+      });
+    }).catch(function(e){
+      var isGet=!opt || !opt.method || opt.method==='GET';
+      if(retry!==false && isGet && e && e.name==='TypeError'){
+        return new Promise(function(res){ setTimeout(res,500); }).then(function(){
+          return api(url,opt,false);
+        });
+      }
+      throw e;
+    });
+  }
+
+  function crumbs(p){
+    var parts=p.split('/').filter(Boolean), acc='', out='<a href="#" data-open="/">/</a>';
+    for(var i=0;i<parts.length;i++){
+      acc += '/'+parts[i];
+      out += '<span> / </span><a href="#" data-open="'+esc(acc)+'">'+esc(parts[i])+'</a>';
+    }
+    return out;
+  }
+
+  function render(d){
+    cwd=d.path || '/';
+    elPath.innerHTML=crumbs(cwd);
+    names={};
+    if(!d.entries || !d.entries.length){
+      body.innerHTML='<tr><td colspan="3" class="fm-empty">Carpeta vacía</td></tr>';
+      return;
+    }
+    var rows='';
+    for(var i=0;i<d.entries.length;i++){
+      var e=d.entries[i], full=join(cwd,e.name);
+      names[e.name]=true;
+      var icon=e.dir?'📁':'📄';
+      var name;
+      if(e.dir){
+        name='<button type="button" class="fm-name dir" data-open="'+esc(full)+'">'+icon+' '+esc(e.name)+'</button>';
+      }else{
+        name='<a class="fm-name" href="/api/download?path='+enc(full)+'" download="'+esc(e.name)+'">'+icon+' '+esc(e.name)+'</a>';
+      }
+      var actions;
+      if(e.dir){
+        actions='<button type="button" class="fm-mini" data-open="'+esc(full)+'">Abrir</button>'
+              + '<button type="button" class="fm-mini del" data-del="'+esc(full)+'" data-dir="1">Borrar</button>';
+      }else{
+        actions='<a class="fm-mini" href="/api/download?path='+enc(full)+'" download="'+esc(e.name)+'">Descargar</a>'
+              + '<button type="button" class="fm-mini del" data-del="'+esc(full)+'" data-dir="0">Borrar</button>';
+      }
+      rows+='<tr><td>'+name+'</td><td>'+(e.dir?'—':fmt(e.size))+'</td>'
+          + '<td><div class="fm-act">'+actions+'</div></td></tr>';
+    }
+    body.innerHTML=rows;
+  }
+
+  function load(p){
+    var my=++seq;
+    status('cargando…');
+    api('/api/files?path='+enc(p)).then(function(d){
+      if(my!==seq) return;
+      render(d);
+      status((d.entries?d.entries.length:0)+' elementos');
+    }).catch(function(e){
+      if(my!==seq) return;
+      status('error: '+errText(e),true);
+    });
+  }
+
+  function mkdir(){
+    var name=prompt('Nombre de la carpeta:');
+    if(!name) return;
+    if(name.indexOf('/')>=0 || name==='.' || name==='..'){
+      status('nombre de carpeta no válido',true);
+      return;
+    }
+    api('/api/mkdir?path='+enc(join(cwd,name)),{method:'POST'}).then(function(){
+      load(cwd);
+    }).catch(function(e){ status('error: '+errText(e),true); });
+  }
+
+  function remove(p,isDir){
+    if(!confirm('¿Borrar '+(isDir?'la carpeta ':'el fichero ')+p+'?')) return;
+    var url=isDir?'/api/rmdir?path=':'/api/file?path=';
+    api(url+enc(p),{method:isDir?'POST':'DELETE'}).then(function(){
+      load(cwd);
+    }).catch(function(e){ status('error: '+errText(e),true); });
+  }
+
+  function uploadOne(file,target){
+    return new Promise(function(resolve,reject){
+      var xhr=new XMLHttpRequest();
+      xhr.open('PUT','/api/file?path='+enc(join(target,file.name)));
+      xhr.upload.onprogress=function(ev){
+        if(ev.lengthComputable)
+          status('subiendo '+file.name+' '+Math.round(ev.loaded/ev.total*100)+'%');
+      };
+      xhr.onload=function(){
+        var d={};
+        try{ d=JSON.parse(xhr.responseText); }catch(_){}
+        if(xhr.status>=200 && xhr.status<300) resolve(d);
+        else reject(new Error(d.error || ('HTTP '+xhr.status)));
+      };
+      xhr.onerror=function(){ reject(new Error('error de red')); };
+      xhr.send(file);
+    });
+  }
+
+  function uploadFiles(list){
+    var files=[], i, target=cwd, known=names;
+    for(i=0;i<list.length;i++) files.push(list[i]);
+    if(!files.length) return;
+
+    var chain=Promise.resolve();
+    files.forEach(function(f){
+      chain=chain.then(function(){
+        if(known[f.name] && !confirm('Ya existe '+f.name+'. ¿Sobrescribir?')) return;
+        status('subiendo '+f.name+'…');
+        return uploadOne(f,target);
+      });
+    });
+    chain.then(function(){ load(cwd); })
+         .catch(function(e){ status('error: '+errText(e),true); });
+  }
+
+  document.getElementById('fmUp').addEventListener('click',function(){ load(parent(cwd)); });
+  document.getElementById('fmRefresh').addEventListener('click',function(){ load(cwd); });
+  document.getElementById('fmMkdir').addEventListener('click',mkdir);
+  document.getElementById('fmPick').addEventListener('click',function(){ elInput.click(); });
+  elInput.addEventListener('change',function(){ uploadFiles(elInput.files); elInput.value=''; });
+
+  body.addEventListener('click',function(ev){
+    var t=ev.target;
+    if(t.getAttribute && t.getAttribute('data-open')!==null){
+      ev.preventDefault(); load(t.getAttribute('data-open')); return;
+    }
+    if(t.getAttribute && t.getAttribute('data-del')!==null){
+      remove(t.getAttribute('data-del'), t.getAttribute('data-dir')==='1');
+    }
+  });
+  elPath.addEventListener('click',function(ev){
+    var t=ev.target;
+    if(t.getAttribute && t.getAttribute('data-open')!==null){
+      ev.preventDefault(); load(t.getAttribute('data-open'));
+    }
+  });
+
+  ['dragenter','dragover'].forEach(function(n){
+    elDrop.addEventListener(n,function(ev){ ev.preventDefault(); elDrop.classList.add('over'); });
+  });
+  ['dragleave','drop'].forEach(function(n){
+    elDrop.addEventListener(n,function(ev){ ev.preventDefault(); elDrop.classList.remove('over'); });
+  });
+  elDrop.addEventListener('drop',function(ev){ uploadFiles(ev.dataTransfer.files); });
+
+  /* Que soltar un fichero fuera de la zona no haga que el navegador lo abra. */
+  ['dragover','drop'].forEach(function(n){
+    elCard.addEventListener(n,function(ev){ ev.preventDefault(); });
+  });
+
+  load('/');
+})();
+</script>
+<script>
+/* Terminal web: POST /api/exec y polling de GET /api/job.  El httpd atiende
+   una conexión a la vez, así que un poll puede coincidir con el breve
+   intervalo en que se recrea el socket de escucha: reintentamos los errores
+   de red en lugar de perder el trabajo. */
+(function(){
+  var out=document.getElementById('termOut');
+  if(!out) return;
+  var inp=document.getElementById('termIn');
+  var run=document.getElementById('termRun');
+  var clr=document.getElementById('termClear');
+  var st=document.getElementById('termState');
+  var busy=false, hist=[], hi=0;
+
+  function setState(s,cls){ st.textContent=s; st.className='term-state'+(cls?' '+cls:''); }
+  function setBusy(b){ busy=b; inp.disabled=b; run.disabled=b; }
+
+  function strip(s){
+    return s.replace(/\x1b\][^\x07]*\x07/g,'')
+            .replace(/\x1b\[[0-?]*[ -\/]*[@-~]/g,'')
+            .replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  }
+  function append(s){
+    out.textContent += s;
+    if(out.textContent.length > 200000) out.textContent = out.textContent.slice(-150000);
+    out.scrollTop = out.scrollHeight;
+  }
+  function clear(){ out.textContent=''; setState('listo'); }
+
+  function getJSON(url,opt,tries){
+    if(tries===undefined) tries=24;
+    return fetch(url,opt).then(function(r){
+      return r.text().then(function(t){
+        var d={};
+        try{ d=JSON.parse(t); }catch(_){}
+        if(!r.ok) throw new Error(d.error || ('HTTP '+r.status));
+        return d;
+      });
+    }).catch(function(e){
+      if(tries>0 && e && e.name==='TypeError'){
+        return new Promise(function(res){ setTimeout(res,250); })
+          .then(function(){ return getJSON(url,opt,tries-1); });
+      }
+      throw e;
+    });
+  }
+
+  function poll(id,tries){
+    if(tries===undefined) tries=24;
+    fetch('/api/job?id='+encodeURIComponent(id)).then(function(r){
+      var state=r.headers.get('X-Job-State');
+      if(state==='running'){
+        setState('ejecutando…','busy');
+        setTimeout(function(){ poll(id,24); },300);
+        return;
+      }
+      return r.text().then(function(t){
+        if(!r.ok){
+          var d={}; try{ d=JSON.parse(t); }catch(_){}
+          throw new Error(d.error || ('HTTP '+r.status));
+        }
+        var text=strip(t);
+        if(text.length){
+          append(text);
+          if(!text.endsWith('\n')) append('\n');
+        } else {
+          append('(sin salida)\n');
+        }
+        if(r.headers.get('X-Job-Truncated')==='1') append('[salida truncada a 8 KB]\n');
+        setBusy(false); setState('listo'); inp.focus();
+      });
+    }).catch(function(e){
+      if(tries>0 && e && e.name==='TypeError'){
+        setTimeout(function(){ poll(id,tries-1); },300);
+        return;
+      }
+      setBusy(false);
+      var msg=(e && e.message) ? e.message : 'error de red';
+      setState('error: '+msg,'err');
+      append('[error] '+msg+'\n');
+    });
+  }
+
+  function submit(){
+    if(busy) return;
+    var cmd=inp.value.trim();
+    if(!cmd) return;
+    inp.value='';
+    hist.push(cmd); hi=hist.length;
+    if(cmd==='clear' || cmd==='cls'){ clear(); inp.focus(); return; }
+    if(/^(reset|netdown|kill|rm|rmdir|mkfs|format)\b/.test(cmd)){
+      if(!confirm('¿Ejecutar "'+cmd+'"? Puede afectar al sistema.')) return;
+    }
+    append('xsh$ '+cmd+'\n');
+    setBusy(true); setState('enviando…','busy');
+    getJSON('/api/exec',{
+      method:'POST',
+      headers:{'Content-Type':'text/plain'},
+      body:cmd
+    }).then(function(d){
+      setState('ejecutando…','busy');
+      poll(d.id,24);
+    }).catch(function(e){
+      setBusy(false);
+      var msg=(e && e.message) ? e.message : 'error de red';
+      setState('error: '+msg,'err');
+      append('[error] '+msg+'\n');
+    });
+  }
+
+  run.addEventListener('click',submit);
+  clr.addEventListener('click',function(){ clear(); inp.focus(); });
+  inp.addEventListener('keydown',function(ev){
+    if(ev.key==='Enter'){ ev.preventDefault(); submit(); }
+    else if(ev.key==='ArrowUp'){
+      if(hi>0){ hi--; inp.value=hist[hi]; ev.preventDefault(); }
+    } else if(ev.key==='ArrowDown'){
+      if(hi<hist.length-1){ hi++; inp.value=hist[hi]; }
+      else { hi=hist.length; inp.value=''; }
+      ev.preventDefault();
+    } else if(ev.key==='l' && (ev.ctrlKey||ev.metaKey)){
+      ev.preventDefault(); clear();
+    }
+  });
+  document.querySelectorAll('.term-chip').forEach(function(b){
+    b.addEventListener('click',function(){
+      if(busy) return;
+      inp.value=b.getAttribute('data-cmd');
+      submit();
+    });
+  });
+
+  out.textContent='';
+  append('Terminal web de Xinu. Comandos no interactivos; la salida se captura en MEMTTY0.\n\n');
+  inp.focus();
+})();
+</script>
+</body>
+</html>

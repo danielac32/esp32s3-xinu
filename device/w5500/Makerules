@@ -1,0 +1,14 @@
+# This Makefile contains rules to build files in the device/w5500/ directory.
+
+# Name of this component (the directory this file is stored in)
+COMP = device/w5500
+
+# Source files for this component
+C_FILES = w5500Close.c w5500Command.c w5500Control.c w5500Getc.c w5500Init.c \
+          w5500Interrupt.c w5500Open.c w5500Putc.c w5500Read.c w5500Spi.c \
+          w5500Write.c
+S_FILES =
+
+# Add the files to the compile source path
+DIR = ${TOPDIR}/${COMP}
+COMP_SRC += ${S_FILES:%=${DIR}/%} ${C_FILES:%=${DIR}/%}

@@ -1,0 +1,7 @@
+COMP = fs
+C_FILES = Src/disk.c Src/fatPort.c Src/fat_access.c Src/fat_cache.c \
+          Src/fat_filelib.c Src/fat_format.c Src/fat_misc.c Src/fat_string.c \
+          Src/fat_table.c Src/fat_write.c
+S_FILES =
+DIR = ${TOPDIR}/${COMP}
+COMP_SRC += ${S_FILES:%=${DIR}/%} ${C_FILES:%=${DIR}/%}

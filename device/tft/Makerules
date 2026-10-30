@@ -1,0 +1,13 @@
+# This Makefile contains rules to build files in the device/tft/ directory.
+
+# Name of this component (the directory this file is stored in)
+COMP = device/tft
+
+# Source files for this component
+C_FILES = tftClose.c tftControl.c tftGetc.c tftHw.c \
+          tftInit.c tftOpen.c tftPutc.c tftRead.c tftWrite.c
+S_FILES =
+
+# Add the files to the compile source path
+DIR = ${TOPDIR}/${COMP}
+COMP_SRC += ${S_FILES:%=${DIR}/%} ${C_FILES:%=${DIR}/%}

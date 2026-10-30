@@ -1,0 +1,168 @@
+/**
+ * @file initialize.c
+ * The system begins initializing after the C environment has been
+ * established.  After initialization, the null thread remains always in
+ * a ready (THRREADY) or running (THRCURR) state.
+ */
+/* Embedded Xinu, Copyright (C) 2009, 2013.  All rights reserved. */
+
+#include <kernel.h>
+#include <clock.h>
+#include <device.h>
+#include <memory.h>
+#include <bufpool.h>
+#include <thread.h>
+#include <queue.h>
+#include <semaphore.h>
+#include <monitor.h>
+#include <mailbox.h>
+#include <network.h>
+#include <stddef.h>
+#include <string.h>
+#include <platform.h>
+#include <psram.h>
+
+/* Function prototypes */
+extern thread main(void);       /* main is the first thread created    */
+static int sysinit(void);       /* intializes system structures        */
+
+/* Declarations of major kernel variables */
+struct thrent thrtab[NTHREAD];  /* Thread table                   */
+struct sement semtab[NSEM];     /* Semaphore table                */
+struct monent montab[NMON];     /* Monitor table                  */
+qid_typ readylist;              /* List of READY threads          */
+struct memblock memlist;        /* List of free memory blocks     */
+struct bfpentry bfptab[NPOOL];  /* List of memory buffer pools    */
+
+/* Active system status */
+int thrcount;                   /* Number of live user threads         */
+tid_typ thrcurrent;             /* Id of currently running thread      */
+
+/* Bottom of the heap, set by start.S just above the panic stack. */
+void *memheap;
+
+struct platform platform;       /* Platform specific configuration     */
+
+/**
+ * Initializes the system and becomes the null thread.
+ * This is where the system begins after the C environment has been 
+ * established.  Interrupts are initially DISABLED, and must eventually 
+ * be enabled explicitly.  This routine turns itself into the null thread 
+ * after initialization.  Because the null thread must always remain ready 
+ * to run, it cannot execute code that might cause it to be suspended, wait 
+ * for a semaphore, or put to sleep, or exit.  In particular, it must not 
+ * do I/O unless it uses kprintf for synchronous output.
+ */
+void nulluser(void)
+{
+    /* Platform-specific initialization  */
+    platforminit();
+
+    /* General initialization  */
+    sysinit();
+
+    /* Enable interrupts  */
+    enable();
+
+    /* Spawn the main thread  */
+    ready(create(main, INITSTK, INITPRIO, "MAIN", 0), RESCHED_YES);
+
+    /* null thread has nothing else to do but cannot exit  */
+    while (TRUE)
+    {
+        pause();
+    }
+}
+
+/**
+ * Initializes all Xinu data structures and devices.
+ * @return OK if everything is initialized successfully
+ */
+static int sysinit(void)
+{
+    int i;
+    struct thrent *thrptr;      /* thread control block pointer  */
+    struct memblock *pmblock;   /* memory block pointer          */
+
+    /* Initialize system variables */
+    /* Count this NULLTHREAD as the first thread in the system. */
+    thrcount = 1;
+
+    /* Initialize free memory list */
+    memheap = roundmb(memheap);
+    platform.maxaddr = truncmb(platform.maxaddr);
+    memlist.next = pmblock = (struct memblock *)memheap;
+    memlist.length = (uintptr_t)(platform.maxaddr - memheap);
+    pmblock->next = NULL;
+    pmblock->length = (uintptr_t)(platform.maxaddr - memheap);
+
+    /* Carve the PSRAM mapped by platforminit() into its own free list so
+     * stacks and network buffers can be placed there. */
+    psramMemInit();
+
+    /* Initialize thread table */
+    for (i = 0; i < NTHREAD; i++)
+    {
+        thrtab[i].state = THRFREE;
+    }
+
+    /* initialize null thread entry */
+    thrptr = &thrtab[NULLTHREAD];
+    thrptr->state = THRCURR;
+    thrptr->prio = 0;
+    strlcpy(thrptr->name, "prnull", TNMLEN);
+    thrptr->stkbase = (void *)&_end;
+    thrptr->stklen = (ulong)memheap - (ulong)&_end;
+    thrptr->stkptr = 0;
+    thrptr->memlist.next = NULL;
+    thrptr->memlist.length = 0;
+    thrcurrent = NULLTHREAD;
+
+    /* Initialize semaphores */
+    for (i = 0; i < NSEM; i++)
+    {
+        semtab[i].state = SFREE;
+        semtab[i].queue = queinit();
+    }
+
+    /* Initialize monitors */
+    for (i = 0; i < NMON; i++)
+    {
+        montab[i].state = MFREE;
+    }
+
+    /* Initialize buffer pools */
+    for (i = 0; i < NPOOL; i++)
+    {
+        bfptab[i].state = BFPFREE;
+    }
+
+    /* initialize thread ready list */
+    readylist = queinit();
+
+#if RTCLOCK
+    /* initialize real time clock */
+    clkinit();
+#endif                          /* RTCLOCK */
+
+#if NMAILBOX
+    /* Mailboxes are used by the ARP, ICMP and routing daemons. */
+    mailboxInit();
+#endif
+
+#if NDEVS
+    for (i = 0; i < NDEVS; i++)
+    {
+        devtab[i].init((device*)&devtab[i]);
+    }
+#endif
+
+#if NNETIF
+    if (SYSERR == netInit())
+    {
+        kprintf("WARNING: netInit failed\r\n");
+    }
+#endif
+
+    return OK;
+}

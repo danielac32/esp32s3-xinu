@@ -1,0 +1,13 @@
+# This Makefile contains rules to build files in the device/button/ directory.
+
+# Name of this component (the directory this file is stored in)
+COMP = device/button
+
+# Source files for this component
+C_FILES = buttonClose.c buttonControl.c buttonGetc.c buttonInit.c buttonInterrupt.c \
+          buttonOpen.c buttonPressed.c buttonPutc.c buttonRead.c buttonWrite.c
+S_FILES =
+
+# Add the files to the compile source path
+DIR = ${TOPDIR}/${COMP}
+COMP_SRC += ${S_FILES:%=${DIR}/%} ${C_FILES:%=${DIR}/%}

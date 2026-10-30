@@ -1,0 +1,53 @@
+#
+# Platform-specific Makefile definitions for the ESP32-S3 port.
+#
+
+# Include default Xtensa definitions
+include arch/xtensa/platformVars
+
+PLATFORM_NAME := ESP32-S3
+
+# The ESP32-S3's Xtensa LX7 core runs the CALL0 ABI (-mabi=call0): there are no
+# register windows, which is what lets the context switch be a plain
+# save/restore of a0/a2-a15 instead of a window spill.
+#
+#   -mlongcalls             use indirect calls so code can live anywhere in the
+#                           32-bit address space (no +/-128 KiB call range)
+#   -mtext-section-literals keep each function's literal pool inside its own
+#                           .text section, which the linker script places in
+#                           IRAM alongside the code
+#   -mno-target-align       the default -mtarget-align is fine; left implicit
+#   -std=gnu11              Xinu's headers declare their own bool/uint/etc.,
+#                            which recent GCC treats as keywords under -std=gnu23
+CFLAGS   += -mabi=call0 -std=gnu11 -mtext-section-literals
+CFLAGS   += -ffunction-sections -fdata-sections
+CFLAGS   += -fno-unwind-tables -fno-asynchronous-unwind-tables
+
+# The linker chooses its ABI from the dynconfig it is built against, and this
+# toolchain only ships a windowed-ABI dynconfig (xtensa_esp32s3.so).  Linking
+# CALL0 objects therefore makes the linker warn "incompatible Xtensa
+# configuration" for every object -- harmless, because the objects all agree
+# with each other -- but it also means the relaxer would be making decisions
+# using windowed-ABI assumptions.  Relaxation only ever shrinks code, so turn
+# it off and let the assembler's output stand as written.
+LDFLAGS  += --no-relax
+LDFLAGS  += --gc-sections
+
+# Add a define so we can test for ESP32-S3 in C code if absolutely needed.
+DEFS     += -D_XINU_PLATFORM_ESP32S3_
+
+# NOTE: we deliberately do NOT link with -lgcc.  This toolchain ships only a
+# windowed-ABI libgcc, and a windowed callee cannot be called from CALL0 code
+# (it would try to use a register window that we never rotate).  If a 64-bit
+# division helper is ever needed it must be provided by the kernel itself.
+
+# Embedded Xinu components to build into the kernel image.
+APPCOMPS := shell apps mailbox network fs
+
+# The portable Simple JVM core lives in jvm/ (shared with the host test
+# build); device/jvm compiles it for the target and includes its headers
+# by name.
+INCLUDE  += -I$(TOPDIR)/jvm
+
+# Embedded Xinu device drivers to build into the kernel image.
+DEVICES  := tty uart-esp32s3 w5500 raw udp tcp telnet sd tft button rgb jvm memtty
